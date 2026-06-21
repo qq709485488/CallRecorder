@@ -79,29 +79,71 @@ print('Extraction complete')
 echo "[3/5] Copying dylib to app bundle..."
 cp TrollRecorderBypass.dylib "extracted/Payload/TRApp.app/"
 
-# 4. 注入 dylib 到二进制 (使用 Python 脚本修改 Mach-O)
-echo "[4/5] Injecting dylib into binaries..."
+# 4. 使用 insert_dylib 工具注入 dylib（正确处理所有 Mach-O 偏移量）
+echo "[4/5] Building insert_dylib tool..."
+
+# 克隆并编译 insert_dylib
+cd "$GITHUB_WORKSPACE/ByPass"
+if [ ! -f "insert_dylib" ]; then
+    git clone --depth 1 https://github.com/Tyilo/insert_dylib.git insert_dylib_src 2>/dev/null || true
+    if [ -d "insert_dylib_src" ]; then
+        cd insert_dylib_src
+        echo "Compiling insert_dylib..."
+        # 编译为 Objective-C（main.c 使用了 ObjC 运行时）
+        clang -x objective-c -o insert_dylib insert_dylib/main.c \
+            -framework Foundation -framework CoreFoundation \
+            -mmacosx-version-min=10.10 2>&1 || \
+        xcodebuild -project insert_dylib.xcodeproj \
+            -scheme insert_dylib -configuration Release \
+            -derivedDataPath build 2>&1 || true
+        # 查找编译产物
+        [ -f insert_dylib ] && cp insert_dylib ../insert_dylib
+        [ -f build/Build/Products/Release/insert_dylib ] && cp build/Build/Products/Release/insert_dylib ../insert_dylib
+        cd ..
+        rm -rf insert_dylib_src
+    fi
+fi
+
+# 验证 insert_dylib 是否可用
+if [ -f "insert_dylib" ]; then
+    chmod +x insert_dylib
+    echo "insert_dylib compiled successfully"
+    USE_INSERT_DYLIB=1
+else
+    echo "WARNING: insert_dylib compilation failed, falling back to Python script"
+    USE_INSERT_DYLIB=0
+fi
 
 cd "extracted/Payload/TRApp.app"
 
 # 注入到 TRApp
 echo "Injecting into TRApp..."
-python3 "$GITHUB_WORKSPACE/ByPass/inject_dylib.py" TRApp "@executable_path/TrollRecorderBypass.dylib"
+if [ "$USE_INSERT_DYLIB" = "1" ]; then
+    "$GITHUB_WORKSPACE/ByPass/insert_dylib" "@executable_path/TrollRecorderBypass.dylib" TRApp TRApp_patched --all-yes
+    mv TRApp_patched TRApp
+else
+    python3 "$GITHUB_WORKSPACE/ByPass/inject_dylib.py" TRApp "@executable_path/TrollRecorderBypass.dylib"
+fi
 
 # 注入到 TRCallMonitor
 if [ -f "TRCallMonitor" ]; then
     echo "Injecting into TRCallMonitor..."
-    python3 "$GITHUB_WORKSPACE/ByPass/inject_dylib.py" TRCallMonitor "@executable_path/TrollRecorderBypass.dylib"
+    if [ "$USE_INSERT_DYLIB" = "1" ]; then
+        "$GITHUB_WORKSPACE/ByPass/insert_dylib" "@executable_path/TrollRecorderBypass.dylib" TRCallMonitor TRCallMonitor_patched --all-yes
+        mv TRCallMonitor_patched TRCallMonitor
+    else
+        python3 "$GITHUB_WORKSPACE/ByPass/inject_dylib.py" TRCallMonitor "@executable_path/TrollRecorderBypass.dylib"
+    fi
 fi
 
-# 重新签名注入后的二进制文件，确保代码签名有效
+# 重新签名注入后的二进制文件
 echo "Re-signing binaries after injection..."
 ldid -S TRApp
 if [ -f "TRCallMonitor" ]; then
     ldid -S TRCallMonitor
 fi
 
-cd -
+cd "$GITHUB_WORKSPACE/ByPass"
 
 # 5. 重新打包为 .tipa
 echo "[5/5] Repackaging as .tipa..."
