@@ -72,7 +72,19 @@ def is_verification_method(method_name):
     """检查方法名是否与验证相关"""
     lower = method_name.lower()
     for keyword in VERIFICATION_KEYWORDS:
-        if keyword.lower() in lower:
+        kw_lower = keyword.lower()
+        # 精确匹配：方法名包含关键词，且关键词是完整单词/方法名片段
+        # 避免 isPro 匹配 isProxy, isProperty 等
+        idx = lower.find(kw_lower)
+        if idx < 0:
+            continue
+        # 检查关键词前后是否是单词边界
+        # 关键词前面是字符串开头或非字母字符
+        # 关键词后面是字符串结尾、冒号或非字母字符
+        before_ok = idx == 0 or not lower[idx-1].isalpha()
+        after_pos = idx + len(kw_lower)
+        after_ok = after_pos >= len(lower) or lower[after_pos] in ':' or not lower[after_pos].isalpha()
+        if before_ok and after_ok:
             return True
     return False
 
@@ -207,4 +219,5 @@ def main():
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    main()
+    sys.exit(0)

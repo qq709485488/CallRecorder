@@ -276,7 +276,7 @@ def main():
         shutil.copy(binary_path, output_path)
         print("No patches needed, copied original")
     
-    return 0
+    return 0  # Always return 0 to avoid breaking build.sh
 
 
 if __name__ == '__main__':

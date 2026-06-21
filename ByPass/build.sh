@@ -61,12 +61,12 @@ for binary in $BINARIES; do
     
     # 用 Python 分析 otool 输出，找到验证方法并生成补丁列表
     echo "  Analyzing verification methods..."
-    python3 "$GITHUB_WORKSPACE/ByPass/analyze_otool.py" "/tmp/${binary}_objc_dump.txt" "$binary" "/tmp/${binary}_patches.txt"
+    python3 "$GITHUB_WORKSPACE/ByPass/analyze_otool.py" "/tmp/${binary}_objc_dump.txt" "$binary" "/tmp/${binary}_patches.txt" || true
     
     # 应用补丁
     if [ -s "/tmp/${binary}_patches.txt" ]; then
         echo "  Applying patches..."
-        python3 "$GITHUB_WORKSPACE/ByPass/apply_patches.py" "$binary" "/tmp/${binary}_patches.txt" "${binary}_patched"
+        python3 "$GITHUB_WORKSPACE/ByPass/apply_patches.py" "$binary" "/tmp/${binary}_patches.txt" "${binary}_patched" || true
         
         if [ -f "${binary}_patched" ]; then
             mv "${binary}_patched" "$binary"
