@@ -26,39 +26,31 @@ ls -la TrollRecorderBypass.dylib
 echo "[2/5] Extracting original .tipa..."
 unzip -o TRApp_2.14-542.tipa -d extracted
 
-# 3. 安装 insert_dylib 工具
-echo "[3/5] Installing insert_dylib..."
-if ! command -v insert_dylib &> /dev/null; then
-    # 下载预编译的 insert_dylib 或从源码编译
-    git clone https://github.com/Tyilo/insert_dylib.git /tmp/insert_dylib
-    cd /tmp/insert_dylib
-    xcodebuild -project insert_dylib.xcodeproj -scheme insert_dylib -configuration Release -derivedDataPath build
-    cp build/Build/Products/Release/insert_dylib /usr/local/bin/
-    cd -
-fi
-
-# 复制 dylib 到 app 目录
+# 3. 复制 dylib 到 app 目录
+echo "[3/5] Copying dylib to app bundle..."
 cp TrollRecorderBypass.dylib "extracted/Payload/TRApp.app/"
 
-# 4. 注入 dylib 到主二进制
+# 4. 注入 dylib 到二进制 (使用 Python 脚本修改 Mach-O)
 echo "[4/5] Injecting dylib into binaries..."
 
-# 注入到 TRApp
-insert_dylib "@executable_path/TrollRecorderBypass.dylib" "extracted/Payload/TRApp.app/TRApp" --strip-codesig --all-yes
-# 重新签名（对于 TrollStore 不是必须的，但保持完整性）
-codesign -f -s - "extracted/Payload/TRApp.app/TRApp" 2>/dev/null || echo "Codesign skipped for TrollStore"
+cd "extracted/Payload/TRApp.app"
 
-# 也注入到 TRCallMonitor 守护进程
-cp TrollRecorderBypass.dylib "extracted/Payload/TRApp.app/TrollRecorderBypass.dylib"
-if [ -f "extracted/Payload/TRApp.app/TRCallMonitor" ]; then
-    insert_dylib "@executable_path/TrollRecorderBypass.dylib" "extracted/Payload/TRApp.app/TRCallMonitor" --strip-codesig --all-yes
-    codesign -f -s - "extracted/Payload/TRApp.app/TRCallMonitor" 2>/dev/null || echo "Codesign skipped for TRCallMonitor"
+# 注入到 TRApp
+echo "Injecting into TRApp..."
+python3 "$GITHUB_WORKSPACE/ByPass/inject_dylib.py" TRApp "@executable_path/TrollRecorderBypass.dylib"
+
+# 注入到 TRCallMonitor
+if [ -f "TRCallMonitor" ]; then
+    echo "Injecting into TRCallMonitor..."
+    python3 "$GITHUB_WORKSPACE/ByPass/inject_dylib.py" TRCallMonitor "@executable_path/TrollRecorderBypass.dylib"
 fi
+
+cd -
 
 # 5. 重新打包为 .tipa
 echo "[5/5] Repackaging as .tipa..."
 cd extracted
-zip -r ../TRApp_ByPass.tipa Payload
+ditto -c -k --sequesterRsrc --keepParent Payload ../TRApp_ByPass.tipa
 cd ..
 
 echo "=== Done! ==="
