@@ -31,6 +31,7 @@ settings:
     SWIFT_OBJC_BRIDGING_HEADER: ""
     PRODUCT_NAME: TRApp
     DISPLAY_NAME: CallRecorder
+    ASSETCATALOG_COMPILER_APPICON_NAME: ""
 
 targets:
   CallRecorder:
