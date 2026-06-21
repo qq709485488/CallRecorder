@@ -38,8 +38,8 @@ clang -dynamiclib \
 # 设置 install name
 install_name_tool -id "@executable_path/TrollRecorderBypass.dylib" TrollRecorderBypass.dylib
 
-# 去掉调试符号
-strip -x TrollRecorderBypass.dylib 2>/dev/null || true
+# 去掉调试符号（-S 只移除调试符号，保留 __DATA,__interpose 等关键 section）
+strip -S TrollRecorderBypass.dylib 2>/dev/null || true
 
 # 安装 ldid 并用它签名
 if ! command -v ldid &> /dev/null; then
