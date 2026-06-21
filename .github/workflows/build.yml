@@ -1,0 +1,77 @@
+# ============================================================
+#  CallRecorder GitHub Actions 自动构建
+#  推送代码到 GitHub 后自动编译并生成 .tipa
+# ============================================================
+
+name: Build CallRecorder .tipa
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '15.4'
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode Project
+        run: xcodegen generate
+
+      - name: Generate silence.wav
+        run: |
+          python3 -c "
+          import struct, wave
+          duration = 10
+          sample_rate = 44100
+          samples = int(duration * sample_rate)
+          data = struct.pack('<' + 'h' * samples, *[0] * samples)
+          with wave.open('Resources/silence.wav', 'w') as f:
+              f.setnchannels(1)
+              f.setsampwidth(2)
+              f.setframerate(sample_rate)
+              f.writeframes(data)
+          "
+
+      - name: Build
+        run: |
+          xcodebuild \
+            -project CallRecorder.xcodeproj \
+            -scheme CallRecorder \
+            -configuration Release \
+            -derivedDataPath build/DerivedData \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Find .app and Package .tipa
+        run: |
+          APP_PATH=$(find build/DerivedData -name "TRApp.app" -type d | head -1)
+          echo "Found app at: $APP_PATH"
+          mkdir -p output/tipa/Payload
+          cp -R "$APP_PATH" output/tipa/Payload/
+          cd output/tipa
+          zip -r ../TRApp.tipa Payload/
+          cd ../..
+          echo "TIPA size: $(du -sh output/TRApp.tipa | cut -f1)"
+
+      - name: Upload .tipa Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TRApp.tipa
+          path: output/TRApp.tipa
+          retention-days: 7

@@ -1,0 +1,26 @@
+# Xcode
+*.xcuserdata
+*.xcworkspace
+xcuserdata/
+DerivedData/
+build/
+output/
+
+# macOS
+.DS_Store
+__MACOSX/
+
+# Code signing
+*.mobileprovision
+*.provisionprofile
+
+# IDE
+.vscode/
+.idea/
+
+# Dependencies
+Carthage/
+Pods/
+
+# Generated
+*.generated.swift

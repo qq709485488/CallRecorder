@@ -1,0 +1,97 @@
+# ============================================================
+#  CallRecorder XcodeGen 项目配置
+#  使用方法: xcodegen generate
+#  安装 XcodeGen: brew install xcodegen
+# ============================================================
+
+name: CallRecorder
+options:
+  bundleIdPrefix: wiki.qaq.trapp
+  deploymentTarget:
+    iOS: "15.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+  developmentLanguage: zh-Hans
+
+settings:
+  base:
+    PRODUCT_BUNDLE_IDENTIFIER: wiki.qaq.trapp
+    INFOPLIST_FILE: App/Info.plist
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: ""
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGNING_ALLOWED: NO
+    ENABLE_BITCODE: NO
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    VALID_ARCHS: arm64
+    ARCHS: arm64
+    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+    CLANG_ENABLE_MODULES: YES
+    SWIFT_OBJC_BRIDGING_HEADER: ""
+    PRODUCT_NAME: TRApp
+    DISPLAY_NAME: CallRecorder
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+targets:
+  CallRecorder:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        type: group
+        name: App
+      - path: Sources
+        type: group
+        name: Sources
+      - path: UI
+        type: group
+        name: UI
+      - path: Extensions
+        type: group
+        name: Extensions
+      - path: Resources
+        type: group
+        name: Resources
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        INFOPLIST_FILE: App/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: wiki.qaq.trapp
+        CODE_SIGN_ENTITLEMENTS: CallRecorder.entitlements
+    dependencies: []
+    preBuildScripts: []
+    postBuildScripts: []
+    attributes:
+      SystemCapabilities:
+        com.apple.Push:
+          enabled: false
+        com.apple.BackgroundModes:
+          enabled: true
+          modes:
+            - audio
+            - fetch
+            - location
+            - processing
+        com.apple.Keychain:
+          enabled: false
+        com.apple.iCloud:
+          enabled: false
+    coreDataModels:
+      - path: Resources/CallRecorder.xcdatamodeld
+        currentVersion: CallRecorder.xcdatamodel
+
+schemes:
+  CallRecorder:
+    build:
+      targets:
+        CallRecorder: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

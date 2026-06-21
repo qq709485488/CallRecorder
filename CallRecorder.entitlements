@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>application-identifier</key>
+	<string>GXZ23M5TP2.wiki.qaq.trapp</string>
+	<key>com.apple.developer.team-identifier</key>
+	<string>GXZ23M5TP2</string>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.wiki.qaq.trapp</string>
+	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>GXZ23M5TP2.wiki.qaq.trapp</string>
+		<string>GXZ23M5TP2.wiki.qaq.trapp.xpc</string>
+	</array>
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.wiki.qaq.trapp</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudDocuments</string>
+		<string>CloudKit</string>
+	</array>
+	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
+	<string>GXZ23M5TP2.wiki.qaq.trapp</string>
+	<key>com.apple.developer.usernotifications.filtering</key>
+	<true/>
+	<key>com.apple.developer.networking.wifi-info</key>
+	<true/>
+	<key>get-task-allow</key>
+	<true/>
+	<key>com.apple.private.skip-library-validation</key>
+	<true/>
+</dict>
+</plist>
