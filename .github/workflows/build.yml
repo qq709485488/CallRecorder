@@ -60,6 +60,10 @@ jobs:
           echo ""
           echo "=== Total Swift files: $(find App Sources UI PlugIns -name '*.swift' | wc -l) ==="
           echo ""
+          echo "=== Files in pbxproj ==="
+          grep -o '"[^"]*\.swift"' CallRecorder.xcodeproj/project.pbxproj | sort -u
+          echo "=== Total in pbxproj: $(grep -c '\.swift"' CallRecorder.xcodeproj/project.pbxproj || echo 0) ==="
+          echo ""
           echo "=== Build started ==="
           xcodebuild \
             -project CallRecorder.xcodeproj \
@@ -71,20 +75,29 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tee /tmp/build.log | tail -80
+            build 2>&1 | tee /tmp/build.log | tail -200
           echo "=== Build completed ==="
           echo ""
           echo "=== Build summary ==="
           echo "CompileSwift count: $(grep -c 'CompileSwift' /tmp/build.log || echo 0)"
+          echo "CompileSwiftSources count: $(grep -c 'CompileSwiftSources' /tmp/build.log || echo 0)"
+          echo "CompileC count: $(grep -c 'CompileC' /tmp/build.log || echo 0)"
+          echo "SwiftCompile count: $(grep -c 'SwiftCompile' /tmp/build.log || echo 0)"
           echo "Ld count: $(grep -c 'Ld ' /tmp/build.log || echo 0)"
           echo "Warnings: $(grep -c 'warning:' /tmp/build.log || echo 0)"
           echo "Errors: $(grep -c 'error:' /tmp/build.log || echo 0)"
           echo ""
           echo "=== All CompileSwift lines ==="
-          grep 'CompileSwift' /tmp/build.log | head -50 || echo "None found"
+          grep 'CompileSwift' /tmp/build.log | head -60 || echo "None found"
+          echo ""
+          echo "=== All SwiftCompile lines ==="
+          grep 'SwiftCompile' /tmp/build.log | head -60 || echo "None found"
           echo ""
           echo "=== All Ld lines ==="
           grep 'Ld ' /tmp/build.log || echo "None found"
+          echo ""
+          echo "=== First 30 lines of build log ==="
+          head -30 /tmp/build.log
 
       - name: Verify and Package .tipa
         run: |
