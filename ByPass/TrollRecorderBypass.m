@@ -12,6 +12,11 @@
 static OSStatus (*original_SecItemCopyMatching)(CFDictionaryRef query, CFTypeRef *result);
 static OSStatus (*original_SecItemAdd)(CFDictionaryRef attributes, CFTypeRef *result);
 
+// 前向声明
+@interface TrollRecorderBypass : NSObject
++ (void)patchAll;
+@end
+
 // 伪造的许可证数据
 static NSData *fakeLicenseData(void) {
     // 模拟一个有效的 Havoc 许可证响应
@@ -107,10 +112,6 @@ static void init(void) {
 }
 
 // 主要补丁逻辑
-@interface TrollRecorderBypass : NSObject
-+ (void)patchAll;
-@end
-
 @implementation TrollRecorderBypass
 
 + (void)patchAll {
