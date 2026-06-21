@@ -22,9 +22,10 @@ clang -dynamiclib \
 echo "Dylib compiled successfully"
 ls -la TrollRecorderBypass.dylib
 
-# 2. 解压原始 .tipa
+# 2. 解压原始 .tipa (使用 ditto 支持新版 zip 格式)
 echo "[2/5] Extracting original .tipa..."
-unzip -o TRApp_2.14-542.tipa -d extracted
+mkdir -p extracted
+ditto -x -k TRApp_2.14-542.tipa extracted
 
 # 3. 复制 dylib 到 app 目录
 echo "[3/5] Copying dylib to app bundle..."
