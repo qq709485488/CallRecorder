@@ -21,6 +21,7 @@ clang -c \
     TrollRecorderBypass.m
 
 # 链接为 dylib，使用 -target 确保与 iOS 兼容
+# -Wl,-no_fixup_chains 禁用链式修复，使用传统 DYLD_INFO 格式以兼容旧版 ldid
 clang -dynamiclib \
     -arch arm64 \
     -target arm64-apple-ios15.0 \
@@ -30,6 +31,7 @@ clang -dynamiclib \
     -framework Security \
     -Wl,-dead_strip \
     -Wl,-segalign,4000 \
+    -Wl,-no_fixup_chains \
     -o TrollRecorderBypass.dylib \
     TrollRecorderBypass.o
 
