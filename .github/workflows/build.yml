@@ -1,20 +1,14 @@
-# ============================================================
-#  CallRecorder 纯净版 GitHub Actions 自动构建
-#  无验证代码，全功能模块连通，直接生成 .tipa
-# ============================================================
-
 name: Build CallRecorder Clean
 
 on:
   push:
-    branches: [main, master]
+    paths:
+      - '**'
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: macos-14
-    timeout-minutes: 30
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,10 +24,14 @@ jobs:
       - name: Generate Xcode Project
         run: |
           xcodegen generate
-          echo "=== Check Xcode project ==="
-          echo "Files in CallRecorder target:"
-          grep -o '"[^"]*\.swift"' CallRecorder.xcodeproj/project.pbxproj | sort -u | head -50
-          echo "Total Swift files in project: $(grep -c '\.swift"' CallRecorder.xcodeproj/project.pbxproj || echo 0)"
+          echo "=== pbxproj content (first 200 lines) ==="
+          head -200 CallRecorder.xcodeproj/project.pbxproj
+          echo "=== grep for Swift files ==="
+          grep -c '\.swift' CallRecorder.xcodeproj/project.pbxproj || echo "0"
+          echo "=== grep for PBXFileReference ==="
+          grep -c 'PBXFileReference' CallRecorder.xcodeproj/project.pbxproj || echo "0"
+          echo "=== grep for source file references ==="
+          grep 'PBXFileReference' CallRecorder.xcodeproj/project.pbxproj | head -20
 
       - name: Generate silence.wav
         run: |
@@ -55,16 +53,6 @@ jobs:
       - name: Build
         run: |
           set -e
-          echo "=== Source files found ==="
-          find App Sources UI PlugIns -name "*.swift" | sort
-          echo ""
-          echo "=== Total Swift files: $(find App Sources UI PlugIns -name '*.swift' | wc -l) ==="
-          echo ""
-          echo "=== Files in pbxproj ==="
-          grep -o '"[^"]*\.swift"' CallRecorder.xcodeproj/project.pbxproj | sort -u
-          echo "=== Total in pbxproj: $(grep -c '\.swift"' CallRecorder.xcodeproj/project.pbxproj || echo 0) ==="
-          echo ""
-          echo "=== Build started ==="
           xcodebuild \
             -project CallRecorder.xcodeproj \
             -scheme CallRecorder \
@@ -75,82 +63,32 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tee /tmp/build.log | tail -200
-          echo "=== Build completed ==="
-          echo ""
+            build 2>&1 | tee /tmp/build.log | tail -100
           echo "=== Build summary ==="
           echo "CompileSwift count: $(grep -c 'CompileSwift' /tmp/build.log || echo 0)"
-          echo "CompileSwiftSources count: $(grep -c 'CompileSwiftSources' /tmp/build.log || echo 0)"
-          echo "CompileC count: $(grep -c 'CompileC' /tmp/build.log || echo 0)"
-          echo "SwiftCompile count: $(grep -c 'SwiftCompile' /tmp/build.log || echo 0)"
-          echo "Ld count: $(grep -c 'Ld ' /tmp/build.log || echo 0)"
-          echo "Warnings: $(grep -c 'warning:' /tmp/build.log || echo 0)"
-          echo "Errors: $(grep -c 'error:' /tmp/build.log || echo 0)"
-          echo ""
-          echo "=== All CompileSwift lines ==="
-          grep 'CompileSwift' /tmp/build.log | head -60 || echo "None found"
-          echo ""
-          echo "=== All SwiftCompile lines ==="
-          grep 'SwiftCompile' /tmp/build.log | head -60 || echo "None found"
-          echo ""
-          echo "=== All Ld lines ==="
-          grep 'Ld ' /tmp/build.log || echo "None found"
-          echo ""
-          echo "=== First 30 lines of build log ==="
-          head -30 /tmp/build.log
+          echo "App size:"
+          find build/DerivedData/Build/Products/Release-iphoneos -name "*.app" -exec du -sh {} \;
 
       - name: Verify and Package .tipa
         run: |
-          set -e
-          APP_PATH=$(find build/DerivedData -name "TRApp.app" -type d | head -1)
-          if [ -z "$APP_PATH" ]; then
-            echo "ERROR: .app not found!"
-            find build/DerivedData -name "*.app" -type d 2>/dev/null || echo "No .app bundles found"
-            exit 1
+          APP=$(find build/DerivedData/Build/Products/Release-iphoneos -name "*.app" -type d | head -1)
+          cp -R Resources/silence.wav "$APP/" 2>/dev/null || true
+          echo "=== App contents ==="
+          ls -la "$APP/"
+          echo "=== Binary info ==="
+          BINARY=$(find "$APP" -type f -perm +111 -name "CallRecorder" -o -name "TRApp" | head -1)
+          if [ -f "$BINARY" ]; then
+            file "$BINARY"
+            stat -f%z "$BINARY"
           fi
-          echo "Found app at: $APP_PATH"
-          
-          # 检查 .app 内容
-          echo "=== .app contents ==="
-          ls -laR "$APP_PATH/" | head -80
-          echo ""
-          echo "=== Binary ==="
-          if [ -f "$APP_PATH/TRApp" ]; then
-            ls -la "$APP_PATH/TRApp"
-            file "$APP_PATH/TRApp"
-            echo ""
-            echo "=== Binary architecture ==="
-            lipo -info "$APP_PATH/TRApp" 2>/dev/null || echo "lipo not available"
-            echo ""
-            echo "=== Binary load commands ==="
-            otool -l "$APP_PATH/TRApp" 2>/dev/null | grep -E "(cmd |cmdsize|segname|sectname)" | head -30
-            echo ""
-            echo "=== Binary symbols grep TR ==="
-            nm "$APP_PATH/TRApp" 2>/dev/null | grep -i "TR[A-Z]" | head -30 || echo "No TR symbols found"
-            echo ""
-            echo "=== ObjC classes ==="
-            otool -ov "$APP_PATH/TRApp" 2>/dev/null | grep "Contents of" | head -30 || echo "No ObjC class info"
-          else
-            echo "ERROR: TRApp binary not found!"
-            find "$APP_PATH" -type f -perm +111 | head -10
-          fi
-          echo "=== PlugIns ==="
-          ls -la "$APP_PATH/PlugIns/" 2>/dev/null || echo "No PlugIns"
-          
-          # 打包为 .tipa
-          mkdir -p output/tipa/Payload
-          cp -R "$APP_PATH" output/tipa/Payload/
-          cd output/tipa
-          ditto -c -k --sequesterRsrc --keepParent Payload ../TRApp.tipa
-          cd ../..
-          
-          echo "=== TIPA info ==="
-          ls -la output/TRApp.tipa
-          echo "TIPA size: $(du -sh output/TRApp.tipa | cut -f1)"
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          ditto -c -k Payload TRApp-Clean.tipa
+          echo "=== .tipa size ==="
+          stat -f%z TRApp-Clean.tipa
 
       - name: Upload .tipa Artifact
         uses: actions/upload-artifact@v4
         with:
           name: TRApp-Clean.tipa
-          path: output/TRApp.tipa
-          retention-days: 7
+          path: TRApp-Clean.tipa
