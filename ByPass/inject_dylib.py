@@ -5,7 +5,8 @@ import struct
 import sys
 import os
 
-MH_MAGIC_64 = 0xFEEDFACF
+MH_MAGIC_64 = 0xFEEDFACF  # little-endian
+MH_CIGAM_64 = 0xCFFAEDFE  # big-endian
 FAT_MAGIC = 0xCAFEBABE
 FAT_CIGAM = 0xBEBAFECA
 LC_LOAD_DYLIB = 0xC
@@ -19,15 +20,16 @@ def inject_dylib(binary_path, dylib_path, output_path=None):
     with open(binary_path, 'rb') as f:
         data = bytearray(f.read())
     
-    # Check if it's a fat binary
-    magic = struct.unpack('>I', data[0:4])[0]
+    # Check magic (try both big-endian and little-endian)
+    magic_be = struct.unpack('>I', data[0:4])[0]
+    magic_le = struct.unpack('<I', data[0:4])[0]
     
-    if magic == FAT_MAGIC or magic == FAT_CIGAM:
+    if magic_be == FAT_MAGIC or magic_be == FAT_CIGAM:
         return inject_fat(data, dylib_path, output_path)
-    elif magic == MH_MAGIC_64:
+    elif magic_le == MH_MAGIC_64 or magic_le == MH_CIGAM_64:
         return inject_macho(data, dylib_path, output_path)
     else:
-        print(f"Unknown magic: {hex(magic)}")
+        print(f"Unknown magic: BE={hex(magic_be)} LE={hex(magic_le)}")
         return False
 
 def inject_fat(data, dylib_path, output_path):
@@ -70,7 +72,7 @@ def inject_macho_return(data, dylib_path):
 def inject_macho_inplace(data, dylib_path):
     """Modify a single Mach-O slice in place."""
     magic = struct.unpack('<I', data[0:4])[0]
-    if magic != MH_MAGIC_64:
+    if magic != MH_MAGIC_64 and magic != MH_CIGAM_64:
         print(f"  Not a 64-bit Mach-O: {hex(magic)}")
         return
     
