@@ -125,23 +125,28 @@ else
     python3 "$GITHUB_WORKSPACE/ByPass/inject_dylib.py" TRApp "@executable_path/TrollRecorderBypass.dylib"
 fi
 
-# 注入到 TRCallMonitor
-if [ -f "TRCallMonitor" ]; then
-    echo "Injecting into TRCallMonitor..."
-    if [ "$USE_INSERT_DYLIB" = "1" ]; then
-        "$GITHUB_WORKSPACE/ByPass/insert_dylib" "@executable_path/TrollRecorderBypass.dylib" TRCallMonitor TRCallMonitor_patched --all-yes
-        mv TRCallMonitor_patched TRCallMonitor
-    else
-        python3 "$GITHUB_WORKSPACE/ByPass/inject_dylib.py" TRCallMonitor "@executable_path/TrollRecorderBypass.dylib"
+# 注入到所有守护进程二进制文件
+DAEMONS="TRCallMonitor TRAudioRecorder TRCallRecorder TRSyncLite TRVoiceMemo TRAudioPlayer TRSpeechUtterance"
+for daemon in $DAEMONS; do
+    if [ -f "$daemon" ]; then
+        echo "Injecting into $daemon..."
+        if [ "$USE_INSERT_DYLIB" = "1" ]; then
+            "$GITHUB_WORKSPACE/ByPass/insert_dylib" "@executable_path/TrollRecorderBypass.dylib" "$daemon" "${daemon}_patched" --all-yes
+            mv "${daemon}_patched" "$daemon"
+        else
+            python3 "$GITHUB_WORKSPACE/ByPass/inject_dylib.py" "$daemon" "@executable_path/TrollRecorderBypass.dylib"
+        fi
     fi
-fi
+done
 
 # 重新签名注入后的二进制文件
 echo "Re-signing binaries after injection..."
 ldid -S TRApp
-if [ -f "TRCallMonitor" ]; then
-    ldid -S TRCallMonitor
-fi
+for daemon in $DAEMONS; do
+    if [ -f "$daemon" ]; then
+        ldid -S "$daemon"
+    fi
+done
 
 cd "$GITHUB_WORKSPACE/ByPass"
 
