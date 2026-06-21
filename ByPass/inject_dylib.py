@@ -70,7 +70,7 @@ def inject_macho_return(data, dylib_path):
         return None
 
 def inject_macho_inplace(data, dylib_path):
-    """Modify a single Mach-O slice in place."""
+    """Modify a single Mach-O slice in place, preserving LC_CODE_SIGNATURE."""
     magic = struct.unpack('<I', data[0:4])[0]
     if magic != MH_MAGIC_64 and magic != MH_CIGAM_64:
         print(f"  Not a 64-bit Mach-O: {hex(magic)}")
@@ -94,33 +94,37 @@ def inject_macho_inplace(data, dylib_path):
     dylib_cmd += struct.pack('<I', 0)  # compatibility version
     dylib_cmd += dylib_path_bytes
     
-    # Find the end of load commands and check for LC_CODE_SIGNATURE
+    # Find LC_CODE_SIGNATURE - we must preserve it for TrollStore CoreTrust bypass
     cmd_offset = 28  # After mach_header_64
     code_sig_offset = None
-    code_sig_size = 0
+    code_sig_cmdsize = 0
     
     for i in range(ncmds):
         cmd, cmdsize = struct.unpack('<II', data[cmd_offset:cmd_offset+8])
         if cmd == LC_CODE_SIGNATURE:
             code_sig_offset = cmd_offset
-            code_sig_size = cmdsize
+            code_sig_cmdsize = cmdsize
         cmd_offset += cmdsize
     
-    end_of_cmds = cmd_offset  # Should equal 28 + sizeofcmds
-    
     if code_sig_offset is not None:
-        print(f"  Removing LC_CODE_SIGNATURE at offset {code_sig_offset}")
-        # Remove code signature load command
-        del data[code_sig_offset:code_sig_offset + code_sig_size]
-        ncmds -= 1
-        sizeofcmds -= code_sig_size
-        end_of_cmds = code_sig_offset
-    
-    # Insert the new load command at the end of load commands
-    insert_pos = end_of_cmds
-    data[insert_pos:insert_pos] = dylib_cmd
-    ncmds += 1
-    sizeofcmds += cmd_size
+        # Insert LC_LOAD_DYLIB BEFORE LC_CODE_SIGNATURE to preserve the signature
+        print(f"  Inserting LC_LOAD_DYLIB before LC_CODE_SIGNATURE at offset {code_sig_offset}")
+        data[code_sig_offset:code_sig_offset] = dylib_cmd
+        ncmds += 1
+        sizeofcmds += cmd_size
+        
+        # Update LC_CODE_SIGNATURE's dataoff (it shifted by cmd_size bytes)
+        sig_cmd, sig_cmdsize, sig_dataoff, sig_datasize = struct.unpack('<IIII', data[code_sig_offset + cmd_size:code_sig_offset + cmd_size + 16])
+        new_dataoff = sig_dataoff + cmd_size
+        struct.pack_into('<IIII', data, code_sig_offset + cmd_size, sig_cmd, sig_cmdsize, new_dataoff, sig_datasize)
+        print(f"  Updated LC_CODE_SIGNATURE dataoff: {sig_dataoff} -> {new_dataoff}")
+    else:
+        # No code signature - insert at end of load commands (dylib case)
+        insert_pos = 28 + sizeofcmds
+        print(f"  No LC_CODE_SIGNATURE found, inserting at end of load commands (offset {insert_pos})")
+        data[insert_pos:insert_pos] = dylib_cmd
+        ncmds += 1
+        sizeofcmds += cmd_size
     
     # Update the Mach-O header
     struct.pack_into('<IIIIII', data, 4, cputype, cpusubtype, filetype, ncmds, sizeofcmds, flags)

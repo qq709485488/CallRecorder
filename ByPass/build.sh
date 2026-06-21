@@ -94,6 +94,13 @@ if [ -f "TRCallMonitor" ]; then
     python3 "$GITHUB_WORKSPACE/ByPass/inject_dylib.py" TRCallMonitor "@executable_path/TrollRecorderBypass.dylib"
 fi
 
+# 重新签名注入后的二进制文件，确保代码签名有效
+echo "Re-signing binaries after injection..."
+ldid -S TRApp
+if [ -f "TRCallMonitor" ]; then
+    ldid -S TRCallMonitor
+fi
+
 cd -
 
 # 5. 重新打包为 .tipa
