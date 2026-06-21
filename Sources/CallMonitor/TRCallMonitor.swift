@@ -37,12 +37,12 @@ final class TRCallMonitor: NSObject {
     private var whitelist: Set<String> = []
     private var filterMode: RecordFilterMode = .all
 
-    enum RecordFilterMode {
-        case all
-        case incomingOnly
-        case outgoingOnly
-        case whitelistOnly
-        case blacklistExclude
+    enum RecordFilterMode: String, CaseIterable {
+        case all = "all"
+        case incomingOnly = "incomingOnly"
+        case outgoingOnly = "outgoingOnly"
+        case whitelistOnly = "whitelistOnly"
+        case blacklistExclude = "blacklistExclude"
     }
 
     var onCallStateChanged: ((CallState, ActiveCall?) -> Void)?
@@ -188,7 +188,7 @@ final class TRCallMonitor: NSObject {
 
     // MARK: - 联系人查找
     private func lookupContact(for phoneNumber: String) -> String? {
-        let keys: [CNKeyDescriptor] = [CNGivenNameKey as CNKeyDescriptor, CNFamilyNameKey as CNKeyDescriptor]
+        let keys: [CNKeyDescriptor] = [CNContactGivenNameKey as CNKeyDescriptor, CNContactFamilyNameKey as CNKeyDescriptor]
         let request = CNContactFetchRequest(keysToFetch: keys)
         var contactName: String?
 

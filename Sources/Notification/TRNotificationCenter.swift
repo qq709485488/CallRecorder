@@ -11,13 +11,13 @@ final class TRNotificationCenter {
 
     func setup() {
         // 注册关键通知监听
-        observe(name: "recording-did-start") { [weak self] _ in
+        observe(name: "recording-did-start") { [weak self] name, _ in
             self?.handleRecordingDidStart()
         }
-        observe(name: "recording-did-stop") { [weak self] _ in
+        observe(name: "recording-did-stop") { [weak self] name, _ in
             self?.handleRecordingDidStop()
         }
-        observe(name: "prefs-reload") { [weak self] _ in
+        observe(name: "prefs-reload") { [weak self] name, _ in
             self?.handlePrefsReload()
         }
         print("[TRApp] Darwin 通知系统已初始化")

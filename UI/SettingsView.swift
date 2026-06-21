@@ -26,11 +26,11 @@ struct SettingsView: View {
                     }
 
                 Picker("录音过滤", selection: $filterMode) {
-                    Text("全部").tag("all")
-                    Text("仅来电").tag("incomingOnly")
-                    Text("仅去电").tag("outgoingOnly")
-                    Text("白名单").tag("whitelistOnly")
-                    Text("黑名单排除").tag("blacklistExclude")
+                    Text("全部").tag(TRCallMonitor.RecordFilterMode.all.rawValue)
+                    Text("仅来电").tag(TRCallMonitor.RecordFilterMode.incomingOnly.rawValue)
+                    Text("仅去电").tag(TRCallMonitor.RecordFilterMode.outgoingOnly.rawValue)
+                    Text("白名单").tag(TRCallMonitor.RecordFilterMode.whitelistOnly.rawValue)
+                    Text("黑名单排除").tag(TRCallMonitor.RecordFilterMode.blacklistExclude.rawValue)
                 }
                 .onChange(of: filterMode) { newValue in
                     let mode = TRCallMonitor.RecordFilterMode(rawValue: newValue) ?? .all
@@ -41,9 +41,9 @@ struct SettingsView: View {
             // 音频设置
             Section("音频设置") {
                 Picker("音频格式", selection: $audioFormat) {
-                    Text("M4A (推荐)").tag("m4a")
-                    Text("WAV (无损)").tag("wav")
-                    Text("MP3").tag("mp3")
+                    Text("M4A (推荐)").tag(TRAudioRecorder.AudioFormat.m4a.rawValue)
+                    Text("WAV (无损)").tag(TRAudioRecorder.AudioFormat.wav.rawValue)
+                    Text("MP3").tag(TRAudioRecorder.AudioFormat.mp3.rawValue)
                 }
                 .onChange(of: audioFormat) { newValue in
                     TRAudioRecorder.shared.config.format = TRAudioRecorder.AudioFormat(rawValue: newValue) ?? .m4a

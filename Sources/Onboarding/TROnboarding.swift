@@ -1,4 +1,6 @@
 import SwiftUI
+import AVFoundation
+import UserNotifications
 
 // MARK: - Welcome 引导页
 
@@ -158,11 +160,17 @@ struct SetupController: View {
     }
     
     func requestMicrophone() async {
-        microphoneGranted = await AVAudioSession.sharedInstance().requestRecordPermission()
+        microphoneGranted = await withCheckedContinuation { continuation in
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                continuation.resume(returning: granted)
+            }
+        }
     }
     
     func requestContacts() async {
-        contactsGranted = await TRContactsDecoder.shared.requestAccess()
+        let decoder = TRContactsDecoder.shared
+        await decoder.requestAccess()
+        contactsGranted = decoder.isAuthorized
     }
     
     func requestNotifications() async {
