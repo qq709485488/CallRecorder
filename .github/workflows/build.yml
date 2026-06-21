@@ -1,14 +1,14 @@
 # ============================================================
-#  CallRecorder GitHub Actions 自动构建
-#  推送代码到 GitHub 后自动编译并生成 .tipa
+#  CallRecorder 纯净版 GitHub Actions 自动构建
+#  无验证代码，全功能模块连通，直接生成 .tipa
 # ============================================================
 
-name: Build CallRecorder .tipa
+name: Build CallRecorder Clean
 
 on:
   push:
     branches: [main, master]
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -33,7 +33,8 @@ jobs:
       - name: Generate silence.wav
         run: |
           python3 -c "
-          import struct, wave
+          import struct, wave, os
+          os.makedirs('Resources', exist_ok=True)
           duration = 10
           sample_rate = 44100
           samples = int(duration * sample_rate)
@@ -43,35 +44,59 @@ jobs:
               f.setsampwidth(2)
               f.setframerate(sample_rate)
               f.writeframes(data)
+          echo 'Generated silence.wav'
           "
 
       - name: Build
         run: |
+          set -e
           xcodebuild \
             -project CallRecorder.xcodeproj \
             -scheme CallRecorder \
             -configuration Release \
             -derivedDataPath build/DerivedData \
             -destination 'generic/platform=iOS' \
+            ONLY_ACTIVE_ARCH=NO \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            build
+            SWIFT_OPTIMIZATION_LEVEL="-Osize" \
+            build 2>&1 | tail -50
+          echo "=== Build completed ==="
 
-      - name: Find .app and Package .tipa
+      - name: Verify and Package .tipa
         run: |
+          set -e
           APP_PATH=$(find build/DerivedData -name "TRApp.app" -type d | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: .app not found!"
+            find build/DerivedData -name "*.app" -type d 2>/dev/null || echo "No .app bundles found"
+            exit 1
+          fi
           echo "Found app at: $APP_PATH"
+          
+          # 检查 .app 内容
+          echo "=== .app contents ==="
+          ls -la "$APP_PATH/"
+          echo "=== Binary size ==="
+          ls -la "$APP_PATH/TRApp" 2>/dev/null || echo "Binary not found"
+          echo "=== PlugIns ==="
+          ls -la "$APP_PATH/PlugIns/" 2>/dev/null || echo "No PlugIns"
+          
+          # 打包为 .tipa
           mkdir -p output/tipa/Payload
           cp -R "$APP_PATH" output/tipa/Payload/
           cd output/tipa
-          zip -r ../TRApp.tipa Payload/
+          ditto -c -k --sequesterRsrc --keepParent Payload ../TRApp.tipa
           cd ../..
+          
+          echo "=== TIPA info ==="
+          ls -la output/TRApp.tipa
           echo "TIPA size: $(du -sh output/TRApp.tipa | cut -f1)"
 
       - name: Upload .tipa Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TRApp.tipa
+          name: TRApp-Clean.tipa
           path: output/TRApp.tipa
           retention-days: 7
