@@ -1,16 +1,15 @@
 #include <stdio.h>
 #include <dlfcn.h>
 #include <objc/runtime.h>
-#include <objc/message.h>
 #include <Security/Security.h>
 #include <Foundation/Foundation.h>
 
 // ============================================================
-// TrollRecorder 验证绕过 dylib v2
-// 使用 DYLD_INTERPOSE 真正挂钩 C 函数 + 运行时方法替换
+// TrollRecorder 验证绕过 dylib v3
+// DYLD_INTERPOSE 挂钩 Keychain 访问 + UserDefaults 预设
 // ============================================================
 
-// ---- 保存原始函数指针 ----
+// ---- 原始函数指针 ----
 static OSStatus (*original_SecItemCopyMatching)(CFDictionaryRef query, CFTypeRef *result);
 static OSStatus (*original_SecItemAdd)(CFDictionaryRef attributes, CFTypeRef *result);
 static OSStatus (*original_SecItemDelete)(CFDictionaryRef query);
@@ -30,7 +29,7 @@ static NSData *fakeLicenseData(void) {
     return [NSPropertyListSerialization dataWithPropertyList:license format:NSPropertyListBinaryFormat_v1_0 options:0 error:nil];
 }
 
-// ---- 检测是否是许可证相关查询 ----
+// ---- 检测许可证相关 Keychain 查询 ----
 static BOOL isLicenseQuery(CFDictionaryRef query) {
     if (!query) return NO;
     NSDictionary *q = (__bridge NSDictionary *)query;
@@ -76,7 +75,10 @@ static OSStatus hooked_SecItemCopyMatching(CFDictionaryRef query, CFTypeRef *res
         }
         return errSecSuccess;
     }
-    return original_SecItemCopyMatching(query, result);
+    if (original_SecItemCopyMatching) {
+        return original_SecItemCopyMatching(query, result);
+    }
+    return errSecParam;
 }
 
 // ---- 钩子：SecItemAdd ----
@@ -84,7 +86,10 @@ static OSStatus hooked_SecItemAdd(CFDictionaryRef attributes, CFTypeRef *result)
     if (isLicenseQuery(attributes)) {
         return errSecSuccess;
     }
-    return original_SecItemAdd(attributes, result);
+    if (original_SecItemAdd) {
+        return original_SecItemAdd(attributes, result);
+    }
+    return errSecParam;
 }
 
 // ---- 钩子：SecItemDelete ----
@@ -92,16 +97,14 @@ static OSStatus hooked_SecItemDelete(CFDictionaryRef query) {
     if (isLicenseQuery(query)) {
         return errSecSuccess;
     }
-    return original_SecItemDelete(query);
+    if (original_SecItemDelete) {
+        return original_SecItemDelete(query);
+    }
+    return errSecParam;
 }
 
-// ---- 前向声明 ----
-@interface TrollRecorderBypass : NSObject
-+ (void)applyAllPatches;
-@end
-
-// ---- DYLD_INTERPOSE 结构 ----
-// 这会在 dylib 加载时自动挂钩 C 函数，比 constructor 更早执行
+// ---- DYLD_INTERPOSE ----
+// 在 dylib 加载时由 dyld 自动处理，比 constructor 更早
 __attribute__((used, section("__DATA,__interpose")))
 static struct {
     const void *replacement;
@@ -112,70 +115,25 @@ static struct {
     { (const void *)&hooked_SecItemDelete, (const void *)&SecItemDelete },
 };
 
-// ---- 构造函数：在 dylib 加载时执行 ----
-__attribute__((constructor))
-static void init(void) {
-    @autoreleasepool {
-        // 获取原始函数（通过 RTLD_NEXT 跳过我们的钩子）
-        original_SecItemCopyMatching = dlsym(RTLD_NEXT, "SecItemCopyMatching");
-        original_SecItemAdd = dlsym(RTLD_NEXT, "SecItemAdd");
-        original_SecItemDelete = dlsym(RTLD_NEXT, "SecItemDelete");
-        
-        NSLog(@"[TrollRecorderBypass] DYLD_INTERPOSE active, hooks installed");
-        
-        // 立即执行补丁（不延迟！）
-        [TrollRecorderBypass applyAllPatches];
+// ---- 获取原始函数（通过 dlopen 指定 Security.framework 句柄，绕过 interposer） ----
+static void loadOriginalFunctions(void) {
+    void *sec = dlopen("/System/Library/Frameworks/Security.framework/Security", RTLD_LAZY | RTLD_NOLOAD);
+    if (sec) {
+        original_SecItemCopyMatching = dlsym(sec, "SecItemCopyMatching");
+        original_SecItemAdd = dlsym(sec, "SecItemAdd");
+        original_SecItemDelete = dlsym(sec, "SecItemDelete");
+        NSLog(@"[TrollRecorderBypass] Original functions loaded: %p %p %p",
+              original_SecItemCopyMatching, original_SecItemAdd, original_SecItemDelete);
+    } else {
+        NSLog(@"[TrollRecorderBypass] ERROR: Cannot open Security.framework");
     }
 }
 
-// ============================================================
-// 运行时方法替换
-// ============================================================
-@implementation TrollRecorderBypass
-
-+ (void)applyAllPatches {
-    // 1. 预置 UserDefaults（最优先）
-    [self patchUserDefaults];
-    
-    // 2. 查找并 swizzle 所有许可证相关方法
-    [self patchAllLicenseMethods];
-    
-    // 3. 补丁 BSGFeatureFlagStore
-    [self patchFeatureFlagStore];
-    
-    NSLog(@"[TrollRecorderBypass] All patches applied");
-}
-
-+ (void)patchUserDefaults {
-    // 标准 UserDefaults
+// ---- UserDefaults 预设 ----
+static void patchUserDefaults(void) {
     NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
-    NSArray *licenseKeys = @[
-        @"_shouldPromptLicense",
-        @"previousShouldPromptLicense",
-        @"ApplicationLicenseNeedsPromptOnNextLaunch",
-        @"ApplicationDidPresentPurchaseIntro",
-        @"_shouldPromptRating",
-        @"_shouldPromptReview",
-        @"presentedHintPurchaseIntro",
-        @"_trollrecorder_license",
-        @"_trollrecorder_activation",
-        @"licenseVerified",
-        @"isLicensed",
-        @"hasValidLicense",
-        @"licenseKey",
-        @"purchaseRequiredToken",
-        @"purchaseVerified",
-        @"activationStatus",
-        @"trialStartDate",
-        @"trialEndDate",
-        @"licenseExpiryDate",
-        @"licenseType",
-        @"licensePlan",
-        @"licenseFeatures",
-    ];
-    for (NSString *key in licenseKeys) {
-        [d removeObjectForKey:key];
-    }
+    if (!d) return;
+    
     [d setBool:NO forKey:@"_shouldPromptLicense"];
     [d setBool:NO forKey:@"previousShouldPromptLicense"];
     [d setBool:NO forKey:@"ApplicationLicenseNeedsPromptOnNextLaunch"];
@@ -188,7 +146,7 @@ static void init(void) {
     [d setObject:@"2099-12-31T23:59:59Z" forKey:@"licenseExpiryDate"];
     [d synchronize];
     
-    // App Group 共享 UserDefaults
+    // App Group 共享
     NSUserDefaults *shared = [[NSUserDefaults alloc] initWithSuiteName:@"group.wiki.qaq.trapp"];
     if (shared) {
         [shared setBool:NO forKey:@"_shouldPromptLicense"];
@@ -201,146 +159,76 @@ static void init(void) {
     NSLog(@"[TrollRecorderBypass] UserDefaults patched");
 }
 
-+ (void)patchAllLicenseMethods {
-    // 遍历所有已加载的类，查找许可证相关方法
+// ---- 轻量级方法替换（只处理已知的特定类） ----
+static void patchKeyMethods(void) {
+    // 查找 KeychainHelper 类
+    Class helperClass = NULL;
     int numClasses = objc_getClassList(NULL, 0);
-    if (numClasses <= 0) return;
-    
     Class *classes = (Class *)malloc(sizeof(Class) * numClasses);
     objc_getClassList(classes, numClasses);
-    
-    // 要拦截的方法选择器
-    SEL licenseSelectors[] = {
-        @selector(isLicensed),
-        @selector(hasValidLicense),
-        @selector(licenseStatus),
-        @selector(checkLicense),
-        @selector(verifyLicense),
-        @selector(validateLicense),
-        @selector(loadLicense),
-        @selector(readLicense),
-        @selector(getLicense),
-        @selector(fetchLicense),
-        @selector(shouldPromptLicense),
-        @selector(needsLicense),
-        @selector(requiresLicense),
-        @selector(licenseExpired),
-        @selector(purchaseRequired),
-        @selector(isActivated),
-        @selector(activationStatus),
-        @selector(isTrialExpired),
-        @selector(isFeatureEnabled:),
-    };
-    int numSelectors = sizeof(licenseSelectors) / sizeof(SEL);
-    
     for (int i = 0; i < numClasses; i++) {
-        Class cls = classes[i];
-        const char *className = class_getName(cls);
-        
-        // 跳过系统类
-        if (strncmp(className, "NS", 2) == 0 ||
-            strncmp(className, "UI", 2) == 0 ||
-            strncmp(className, "CA", 2) == 0 ||
-            strncmp(className, "CF", 2) == 0 ||
-            strncmp(className, "_NS", 3) == 0 ||
-            strncmp(className, "_UI", 3) == 0 ||
-            strncmp(className, "__NS", 4) == 0 ||
-            strncmp(className, "OS_", 3) == 0 ||
-            strncmp(className, "Fig", 3) == 0 ||
-            strncmp(className, "AV", 2) == 0 ||
-            strncmp(className, "Core", 4) == 0) {
-            continue;
-        }
-        
-        // 只处理与许可证/Keychain/购买相关的类
-        BOOL isRelevant = NO;
-        if (strstr(className, "Keychain") ||
-            strstr(className, "License") ||
-            strstr(className, "Purchase") ||
-            strstr(className, "Feature") ||
-            strstr(className, "Store") ||
-            strstr(className, "Activation") ||
-            strstr(className, "Verify") ||
-            strstr(className, "Havoc") ||
-            strstr(className, "TRApp") ||
-            strstr(className, "BSG")) {
-            isRelevant = YES;
-        }
-        
-        if (!isRelevant) continue;
-        
-        // 检查这个类是否有我们关心的方法
-        for (int j = 0; j < numSelectors; j++) {
-            SEL sel = licenseSelectors[j];
-            Method method = class_getInstanceMethod(cls, sel);
-            if (!method) method = class_getClassMethod(cls, sel);
-            if (method) {
-                NSLog(@"[TrollRecorderBypass] Found method [%s %@]", className, NSStringFromSelector(sel));
-                char returnType[256];
-                method_getReturnType(method, returnType, sizeof(returnType));
-                
-                // 返回 BOOL 的方法 -> 返回 YES
-                if (strcmp(returnType, "B") == 0 || strcmp(returnType, "c") == 0) {
-                    IMP yesImp = imp_implementationWithBlock(^BOOL(id self) { return YES; });
-                    method_setImplementation(method, yesImp);
-                    NSLog(@"[TrollRecorderBypass]   -> always returns YES");
-                }
-                // 返回对象的方法 -> 返回 nil 或假数据
-                else if (returnType[0] == '@') {
-                    if (sel == @selector(loadLicense) || sel == @selector(readLicense) || sel == @selector(getLicense) || sel == @selector(fetchLicense)) {
-                        IMP fakeImp = imp_implementationWithBlock(^id(id self) {
-                            return @{
-                                @"license_key": @"TROLLSTORE-FREE",
-                                @"is_active": @YES,
-                                @"plan": @"premium",
-                                @"expiry_date": @"2099-12-31T23:59:59Z"
-                            };
-                        });
-                        method_setImplementation(method, fakeImp);
-                        NSLog(@"[TrollRecorderBypass]   -> returns fake license");
-                    } else {
-                        IMP nilImp = imp_implementationWithBlock(^id(id self) { return nil; });
-                        method_setImplementation(method, nilImp);
-                        NSLog(@"[TrollRecorderBypass]   -> returns nil");
-                    }
-                }
-                // isFeatureEnabled: -> 返回 YES
-                else if (sel == @selector(isFeatureEnabled:)) {
-                    IMP yesImp = imp_implementationWithBlock(^BOOL(id self, id name) { return YES; });
-                    method_setImplementation(method, yesImp);
-                    NSLog(@"[TrollRecorderBypass]   -> always returns YES");
-                }
-            }
+        const char *name = class_getName(classes[i]);
+        if (strstr(name, "KeychainHelper")) {
+            helperClass = classes[i];
+            NSLog(@"[TrollRecorderBypass] Found KeychainHelper: %s", name);
+            break;
         }
     }
     free(classes);
-}
-
-+ (void)patchFeatureFlagStore {
-    Class bsgsClass = NSClassFromString(@"BSGFeatureFlagStore");
-    if (!bsgsClass) {
-        // 尝试查找包含 "FeatureFlag" 的类
-        int numClasses = objc_getClassList(NULL, 0);
-        Class *classes = (Class *)malloc(sizeof(Class) * numClasses);
-        objc_getClassList(classes, numClasses);
-        for (int i = 0; i < numClasses; i++) {
-            const char *name = class_getName(classes[i]);
-            if (strstr(name, "FeatureFlag")) {
-                bsgsClass = classes[i];
-                break;
+    
+    if (helperClass) {
+        // 只替换 isLicensed 和 hasValidLicense
+        SEL selectors[] = { @selector(isLicensed), @selector(hasValidLicense) };
+        for (int i = 0; i < 2; i++) {
+            Method m = class_getInstanceMethod(helperClass, selectors[i]);
+            if (m) {
+                IMP imp = imp_implementationWithBlock(^BOOL(id self) { return YES; });
+                method_setImplementation(m, imp);
+                NSLog(@"[TrollRecorderBypass] Patched [%s %@]", class_getName(helperClass), NSStringFromSelector(selectors[i]));
             }
         }
-        free(classes);
     }
     
-    if (bsgsClass) {
-        Method method = class_getInstanceMethod(bsgsClass, @selector(isFeatureEnabled:));
-        if (method) {
-            IMP yesImp = imp_implementationWithBlock(^BOOL(id self, id name) { return YES; });
-            method_setImplementation(method, yesImp);
+    // 查找 BSGFeatureFlagStore
+    Class bsgs = NULL;
+    numClasses = objc_getClassList(NULL, 0);
+    classes = (Class *)malloc(sizeof(Class) * numClasses);
+    objc_getClassList(classes, numClasses);
+    for (int i = 0; i < numClasses; i++) {
+        const char *name = class_getName(classes[i]);
+        if (strstr(name, "FeatureFlag")) {
+            bsgs = classes[i];
+            break;
+        }
+    }
+    free(classes);
+    
+    if (bsgs) {
+        Method m = class_getInstanceMethod(bsgs, @selector(isFeatureEnabled:));
+        if (m) {
+            IMP imp = imp_implementationWithBlock(^BOOL(id self, id name) { return YES; });
+            method_setImplementation(m, imp);
             NSLog(@"[TrollRecorderBypass] Patched FeatureFlagStore");
         }
     }
 }
 
-@end
+// ---- 构造函数 ----
+__attribute__((constructor))
+static void init(void) {
+    @autoreleasepool {
+        NSLog(@"[TrollRecorderBypass] v3 loaded, installing hooks...");
+        
+        // 1. 获取原始函数（必须在 interposer 激活后，通过 dlopen(RTLD_NOLOAD) 获取）
+        loadOriginalFunctions();
+        
+        // 2. 预设 UserDefaults
+        patchUserDefaults();
+        
+        // 3. 延迟执行方法替换（等所有类加载完毕）
+        dispatch_async(dispatch_get_main_queue(), ^{
+            patchKeyMethods();
+            NSLog(@"[TrollRecorderBypass] v3 patch complete");
+        });
+    }
+}
