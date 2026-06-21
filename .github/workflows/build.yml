@@ -50,6 +50,10 @@ jobs:
       - name: Build
         run: |
           set -e
+          echo "=== Source files ==="
+          find App Sources UI -name "*.swift" | sort
+          echo ""
+          echo "=== Build started ==="
           xcodebuild \
             -project CallRecorder.xcodeproj \
             -scheme CallRecorder \
@@ -60,8 +64,7 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            SWIFT_OPTIMIZATION_LEVEL="-Osize" \
-            build 2>&1 | tail -50
+            build 2>&1 | grep -E "(error:|warning:|BUILD|Compiling|Linking|CompileSwift|Ld )" | tail -80
           echo "=== Build completed ==="
 
       - name: Verify and Package .tipa
@@ -77,9 +80,16 @@ jobs:
           
           # 检查 .app 内容
           echo "=== .app contents ==="
-          ls -la "$APP_PATH/"
-          echo "=== Binary size ==="
-          ls -la "$APP_PATH/TRApp" 2>/dev/null || echo "Binary not found"
+          ls -laR "$APP_PATH/" | head -60
+          echo "=== Binary ==="
+          if [ -f "$APP_PATH/TRApp" ]; then
+            ls -la "$APP_PATH/TRApp"
+            file "$APP_PATH/TRApp"
+            echo "=== Binary symbols (first 20) ==="
+            nm "$APP_PATH/TRApp" 2>/dev/null | grep -i "TR[A-Z]" | head -20 || echo "No TR symbols found"
+            echo "=== ObjC classes (first 20) ==="
+            otool -ov "$APP_PATH/TRApp" 2>/dev/null | grep "Contents of" | head -20 || echo "No ObjC class info"
+          fi
           echo "=== PlugIns ==="
           ls -la "$APP_PATH/PlugIns/" 2>/dev/null || echo "No PlugIns"
           
