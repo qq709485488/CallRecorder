@@ -5,8 +5,10 @@
 
 set -e
 
-echo "=== TrollRecorder Binary Patcher v3 ==="
+echo "=== TrollRecorder Binary Patcher v4 ==="
 echo "Strategy: Use otool to find ALL verification methods, then binary patch"
+echo "Target: Original TRApp_2.14-542"
+echo "Date: $(date)"
 echo ""
 
 GITHUB_WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"

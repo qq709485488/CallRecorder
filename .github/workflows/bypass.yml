@@ -1,0 +1,24 @@
+name: Build TrollRecorder ByPass (Binary Patch)
+
+on:
+  push:
+    paths:
+      - 'ByPass/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Bypass (Binary Patch)
+        working-directory: ByPass
+        run: bash build.sh
+
+      - name: Upload TRApp_ByPass.tipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: TRApp_ByPass.tipa
+          path: ByPass/TRApp_ByPass.tipa
