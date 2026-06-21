@@ -95,6 +95,11 @@ static OSStatus hooked_SecItemDelete(CFDictionaryRef query) {
     return original_SecItemDelete(query);
 }
 
+// ---- 前向声明 ----
+@interface TrollRecorderBypass : NSObject
++ (void)applyAllPatches;
+@end
+
 // ---- DYLD_INTERPOSE 结构 ----
 // 这会在 dylib 加载时自动挂钩 C 函数，比 constructor 更早执行
 __attribute__((used, section("__DATA,__interpose")))
@@ -126,9 +131,6 @@ static void init(void) {
 // ============================================================
 // 运行时方法替换
 // ============================================================
-@interface TrollRecorderBypass : NSObject
-@end
-
 @implementation TrollRecorderBypass
 
 + (void)applyAllPatches {
