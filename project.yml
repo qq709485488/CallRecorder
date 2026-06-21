@@ -47,9 +47,6 @@ targets:
       - path: UI
         type: group
         name: UI
-      - path: Extensions
-        type: group
-        name: Extensions
       - path: Resources
         type: group
         name: Resources
