@@ -8,18 +8,59 @@ echo "=== TrollRecorder Bypass Packager ==="
 
 # 1. 编译绕过 dylib
 echo "[1/5] Compiling bypass dylib..."
-clang -dynamiclib \
+SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+
+# 编译为 .o
+clang -c \
     -arch arm64 \
-    -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
-    -miphoneos-version-min=16.0 \
-    -framework Foundation \
-    -framework Security \
-    -framework UIKit \
+    -target arm64-apple-ios15.0 \
+    -isysroot "$SDK_PATH" \
+    -miphoneos-version-min=15.0 \
     -fobjc-arc \
-    -o TrollRecorderBypass.dylib \
+    -o TrollRecorderBypass.o \
     TrollRecorderBypass.m
 
-echo "Dylib compiled successfully"
+# 链接为 dylib，使用 -target 确保与 iOS 兼容
+clang -dynamiclib \
+    -arch arm64 \
+    -target arm64-apple-ios15.0 \
+    -isysroot "$SDK_PATH" \
+    -miphoneos-version-min=15.0 \
+    -framework Foundation \
+    -framework Security \
+    -Wl,-dead_strip \
+    -Wl,-segalign,4000 \
+    -o TrollRecorderBypass.dylib \
+    TrollRecorderBypass.o
+
+# 设置 install name
+install_name_tool -id "@executable_path/TrollRecorderBypass.dylib" TrollRecorderBypass.dylib
+
+# 去掉调试符号
+strip -x TrollRecorderBypass.dylib 2>/dev/null || true
+
+# 安装 ldid 并用它签名
+if ! command -v ldid &> /dev/null; then
+    echo "Installing ldid..."
+    brew install ldid 2>/dev/null || {
+        curl -sL https://github.com/ProcursusTeam/ldid/releases/download/v2.1.5-procursus7/ldid_macosx_x86_64 -o /usr/local/bin/ldid
+        chmod +x /usr/local/bin/ldid
+    }
+fi
+echo "Signing dylib with ldid..."
+ldid -S TrollRecorderBypass.dylib
+
+# 验证 dylib 结构
+echo "=== Dylib verification ==="
+echo "File type:"
+file TrollRecorderBypass.dylib
+echo "Architecture:"
+lipo -info TrollRecorderBypass.dylib 2>/dev/null || echo "Not a fat binary"
+echo "Load commands:"
+otool -l TrollRecorderBypass.dylib 2>/dev/null | grep -E "(LC_CODE|LC_VERSION|LC_BUILD|LC_LOAD|LC_ID_DYLIB|cmd )" | head -20
+echo "Dependencies:"
+otool -L TrollRecorderBypass.dylib 2>/dev/null || true
+echo "Size:"
 ls -la TrollRecorderBypass.dylib
 
 # 2. 解压原始 .tipa (使用 Python zipfile 支持新版 zip 格式)
