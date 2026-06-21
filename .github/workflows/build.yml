@@ -44,7 +44,7 @@ jobs:
               f.setsampwidth(2)
               f.setframerate(sample_rate)
               f.writeframes(data)
-          echo 'Generated silence.wav'
+          print('Generated silence.wav')
           "
 
       - name: Build
