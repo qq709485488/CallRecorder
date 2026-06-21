@@ -51,7 +51,10 @@ jobs:
         run: |
           set -e
           echo "=== Source files ==="
-          find App Sources UI -name "*.swift" | sort
+          find App Sources UI PlugIns -name "*.swift" | sort
+          echo ""
+          echo "=== Total source count ==="
+          find App Sources UI PlugIns -name "*.swift" | wc -l
           echo ""
           echo "=== Build started ==="
           xcodebuild \
@@ -64,8 +67,11 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | grep -E "(error:|warning:|BUILD|Compiling|Linking|CompileSwift|Ld )" | tail -80
+            build 2>&1 | tee /tmp/build.log | grep -E "(error:|warning:|BUILD|Compiling|Linking|CompileSwift|Ld |^===)" | tail -100
           echo "=== Build completed ==="
+          echo ""
+          echo "=== Build warnings/errors ==="
+          grep -E "(error:|warning:)" /tmp/build.log | head -30 || echo "No errors or warnings"
 
       - name: Verify and Package .tipa
         run: |
@@ -80,15 +86,27 @@ jobs:
           
           # 检查 .app 内容
           echo "=== .app contents ==="
-          ls -laR "$APP_PATH/" | head -60
+          ls -laR "$APP_PATH/" | head -80
+          echo ""
           echo "=== Binary ==="
           if [ -f "$APP_PATH/TRApp" ]; then
             ls -la "$APP_PATH/TRApp"
             file "$APP_PATH/TRApp"
-            echo "=== Binary symbols (first 20) ==="
-            nm "$APP_PATH/TRApp" 2>/dev/null | grep -i "TR[A-Z]" | head -20 || echo "No TR symbols found"
-            echo "=== ObjC classes (first 20) ==="
-            otool -ov "$APP_PATH/TRApp" 2>/dev/null | grep "Contents of" | head -20 || echo "No ObjC class info"
+            echo ""
+            echo "=== Binary architecture ==="
+            lipo -info "$APP_PATH/TRApp" 2>/dev/null || echo "lipo not available"
+            echo ""
+            echo "=== Binary load commands ==="
+            otool -l "$APP_PATH/TRApp" 2>/dev/null | grep -E "(cmd |cmdsize|segname|sectname)" | head -30
+            echo ""
+            echo "=== Binary symbols grep TR ==="
+            nm "$APP_PATH/TRApp" 2>/dev/null | grep -i "TR[A-Z]" | head -30 || echo "No TR symbols found"
+            echo ""
+            echo "=== ObjC classes ==="
+            otool -ov "$APP_PATH/TRApp" 2>/dev/null | grep "Contents of" | head -30 || echo "No ObjC class info"
+          else
+            echo "ERROR: TRApp binary not found!"
+            find "$APP_PATH" -type f -perm +111 | head -10
           fi
           echo "=== PlugIns ==="
           ls -la "$APP_PATH/PlugIns/" 2>/dev/null || echo "No PlugIns"
