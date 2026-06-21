@@ -28,7 +28,12 @@ jobs:
         run: brew install xcodegen
 
       - name: Generate Xcode Project
-        run: xcodegen generate
+        run: |
+          xcodegen generate
+          echo "=== Check Xcode project ==="
+          echo "Files in CallRecorder target:"
+          grep -o '"[^"]*\.swift"' CallRecorder.xcodeproj/project.pbxproj | sort -u | head -50
+          echo "Total Swift files in project: $(grep -c '\.swift"' CallRecorder.xcodeproj/project.pbxproj || echo 0)"
 
       - name: Generate silence.wav
         run: |
@@ -50,11 +55,10 @@ jobs:
       - name: Build
         run: |
           set -e
-          echo "=== Source files ==="
+          echo "=== Source files found ==="
           find App Sources UI PlugIns -name "*.swift" | sort
           echo ""
-          echo "=== Total source count ==="
-          find App Sources UI PlugIns -name "*.swift" | wc -l
+          echo "=== Total Swift files: $(find App Sources UI PlugIns -name '*.swift' | wc -l) ==="
           echo ""
           echo "=== Build started ==="
           xcodebuild \
@@ -67,11 +71,20 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tee /tmp/build.log | grep -E "(error:|warning:|BUILD|Compiling|Linking|CompileSwift|Ld |^===)" | tail -100
+            build 2>&1 | tee /tmp/build.log | tail -80
           echo "=== Build completed ==="
           echo ""
-          echo "=== Build warnings/errors ==="
-          grep -E "(error:|warning:)" /tmp/build.log | head -30 || echo "No errors or warnings"
+          echo "=== Build summary ==="
+          echo "CompileSwift count: $(grep -c 'CompileSwift' /tmp/build.log || echo 0)"
+          echo "Ld count: $(grep -c 'Ld ' /tmp/build.log || echo 0)"
+          echo "Warnings: $(grep -c 'warning:' /tmp/build.log || echo 0)"
+          echo "Errors: $(grep -c 'error:' /tmp/build.log || echo 0)"
+          echo ""
+          echo "=== All CompileSwift lines ==="
+          grep 'CompileSwift' /tmp/build.log | head -50 || echo "None found"
+          echo ""
+          echo "=== All Ld lines ==="
+          grep 'Ld ' /tmp/build.log || echo "None found"
 
       - name: Verify and Package .tipa
         run: |
