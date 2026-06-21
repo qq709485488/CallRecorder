@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>wiki.qaq.trapp.processing.weekly-export</string>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
@@ -37,7 +41,7 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<key>MinimumOSVersion</key>
-	<string>15.0</string>
+	<string>16.0</string>
 	<key>NSAccentColorName</key>
 	<string>AccentColor</string>
 	<key>UIDeviceFamily</key>
@@ -55,7 +59,6 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<!-- 后台模式 -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
@@ -63,36 +66,32 @@
 		<string>location</string>
 		<string>processing</string>
 	</array>
-	<key>BGTaskSchedulerPermittedIdentifiers</key>
-	<array>
-		<string>wiki.qaq.trapp.processing.weekly-export</string>
-		<string>wiki.qaq.trapp.audio.processing</string>
-	</array>
-	<!-- 权限描述 -->
 	<key>NSMicrophoneUsageDescription</key>
-	<string>需要访问麦克风以进行录音</string>
+	<string>CallRecorder needs access to your microphone to implement the most basic recording features.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>需要语音识别以将录音转换为文字</string>
+	<string>CallRecorder wants to use speech recognition to make transcript for your recordings.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>需要在后台保持录音服务运行</string>
+	<string>CallRecorder needs access to your location to save it with your recordings.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>CallRecorder needs access to your location to save it with your recordings.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>CallRecorder needs access to your location to save it with your recordings.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>需要在后台保持录音服务运行</string>
+	<string>CallRecorder needs access to your location to save it with your recordings.</string>
 	<key>NSContactsUsageDescription</key>
-	<string>需要访问通讯录以识别来电号码</string>
+	<string>CallRecorder needs access to your contacts to display your friend's name instead of phone number.</string>
 	<key>NSFaceIDUsageDescription</key>
-	<string>需要面容ID以保护录音隐私</string>
-	<!-- 网络 -->
+	<string>CallRecorder requires Face ID to protect your recording privacy.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
-	<!-- Bonjour -->
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_lnp._tcp.</string>
+		<string>_bonjour._tcp</string>
 	</array>
-	<!-- URL Scheme -->
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -104,15 +103,12 @@
 			</array>
 		</dict>
 	</array>
-	<!-- LSApplicationQueriesSchemes -->
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>filza</string>
 	</array>
-	<!-- 应用分类 -->
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
-	<!-- iCloud Container -->
 	<key>NSUbiquitousContainers</key>
 	<dict>
 		<key>iCloud.wiki.qaq.trapp</key>
@@ -125,7 +121,6 @@
 			<string>Any</string>
 		</dict>
 	</dict>
-	<!-- UIApplicationSceneManifest -->
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -143,30 +138,40 @@
 			</array>
 		</dict>
 	</dict>
-	<!-- 图标 -->
-	<key>CFBundleIcons</key>
-	<dict>
-		<key>CFBundlePrimaryIcon</key>
+	<key>UIApplicationShortcutItems</key>
+	<array>
 		<dict>
-			<key>CFBundleIconFiles</key>
-			<array>
-				<string>AppIcon60x60</string>
-			</array>
-			<key>CFBundleIconName</key>
-			<string>AppIcon</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>mic.fill.badge.plus</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Toggle Voice Memo Recording</string>
+			<key>UIApplicationShortcutItemType</key>
+			<string>wiki.qaq.trapp.shortcut.toggle-recording.voice-memo</string>
 		</dict>
-	</dict>
-	<key>CFBundleIcons~ipad</key>
-	<dict>
-		<key>CFBundlePrimaryIcon</key>
 		<dict>
-			<key>CFBundleIconFiles</key>
-			<array>
-				<string>AppIcon76x76</string>
-			</array>
-			<key>CFBundleIconName</key>
-			<string>AppIcon</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>phone.fill.badge.plus</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Toggle Call Recording</string>
+			<key>UIApplicationShortcutItemType</key>
+			<string>wiki.qaq.trapp.shortcut.toggle-recording.call</string>
 		</dict>
-	</dict>
+		<dict>
+			<key>UIApplicationShortcutItemIconFile</key>
+			<string>hifispeaker.badge.plus.fill</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Toggle System Audio Recording</string>
+			<key>UIApplicationShortcutItemType</key>
+			<string>wiki.qaq.trapp.shortcut.toggle-recording.system-audio</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>record.circle</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Toggle Hoverball</string>
+			<key>UIApplicationShortcutItemType</key>
+			<string>wiki.qaq.trapp.shortcut.toggle-hud</string>
+		</dict>
+	</array>
 </dict>
 </plist>

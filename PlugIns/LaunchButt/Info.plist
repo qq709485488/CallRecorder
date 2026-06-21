@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>LaunchButt</string>
+	<key>CFBundleExecutable</key>
+	<string>LaunchButt</string>
+	<key>CFBundleIdentifier</key>
+	<string>wiki.qaq.trapp.LaunchButt</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>LaunchButt</string>
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleShortVersionString</key>
+	<string>2.14</string>
+	<key>CFBundleVersion</key>
+	<string>542</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPrincipalClass</key>
+		<string>$(PRODUCT_MODULE_NAME).LaunchButtShortcuts</string>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.intents-service</string>
+	</dict>
+</dict>
+</plist>

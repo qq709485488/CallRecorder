@@ -8,7 +8,7 @@ name: CallRecorder
 options:
   bundleIdPrefix: wiki.qaq.trapp
   deploymentTarget:
-    iOS: "15.0"
+    iOS: "16.0"
   xcodeVersion: "16.0"
   generateEmptyDirectories: true
   developmentLanguage: zh-Hans
@@ -26,7 +26,7 @@ settings:
     TARGETED_DEVICE_FAMILY: "1,2"
     VALID_ARCHS: arm64
     ARCHS: arm64
-    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
     CLANG_ENABLE_MODULES: YES
     SWIFT_OBJC_BRIDGING_HEADER: ""
     PRODUCT_NAME: TRApp
@@ -56,9 +56,24 @@ targets:
         INFOPLIST_FILE: App/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: wiki.qaq.trapp
         CODE_SIGN_ENTITLEMENTS: CallRecorder.entitlements
-    dependencies: []
+    dependencies:
+      - target: LaunchButt
+      - target: LaunchPadExtension
     preBuildScripts: []
-    postBuildScripts: []
+    postBuildScripts:
+      - name: Embed PlugIns
+        script: |
+          set -e
+          PLUGINS_DIR="$BUILT_PRODUCTS_DIR/$PRODUCT_NAME.app/PlugIns"
+          mkdir -p "$PLUGINS_DIR"
+          if [ -d "$BUILT_PRODUCTS_DIR/LaunchButt.appex" ]; then
+            cp -R "$BUILT_PRODUCTS_DIR/LaunchButt.appex" "$PLUGINS_DIR/"
+          fi
+          if [ -d "$BUILT_PRODUCTS_DIR/LaunchPadExtension.appex" ]; then
+            cp -R "$BUILT_PRODUCTS_DIR/LaunchPadExtension.appex" "$PLUGINS_DIR/"
+          fi
+        inputFiles: []
+        outputFiles: []
     attributes:
       SystemCapabilities:
         com.apple.Push:
@@ -78,11 +93,43 @@ targets:
       - path: Resources/CallRecorder.xcdatamodeld
         currentVersion: CallRecorder.xcdatamodel
 
+  LaunchButt:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: PlugIns/LaunchButt
+        type: group
+        name: LaunchButt
+    settings:
+      base:
+        INFOPLIST_FILE: PlugIns/LaunchButt/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: wiki.qaq.trapp.LaunchButt
+        CODE_SIGN_ENTITLEMENTS: CallRecorder.entitlements
+        PRODUCT_NAME: LaunchButt
+    dependencies: []
+
+  LaunchPadExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: PlugIns/LaunchPadExtension
+        type: group
+        name: LaunchPadExtension
+    settings:
+      base:
+        INFOPLIST_FILE: PlugIns/LaunchPadExtension/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: wiki.qaq.trapp.LaunchPadExtension
+        CODE_SIGN_ENTITLEMENTS: CallRecorder.entitlements
+        PRODUCT_NAME: LaunchPadExtension
+    dependencies: []
+
 schemes:
   CallRecorder:
     build:
       targets:
         CallRecorder: all
+        LaunchButt: all
+        LaunchPadExtension: all
     run:
       config: Debug
     profile:
