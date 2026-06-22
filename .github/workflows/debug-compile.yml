@@ -9,22 +9,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       
-      - name: Compile
+      - name: Compile and save log
         working-directory: ByPass
-        shell: bash
         run: |
           set +e
           SDK=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null)
-          echo "SDK=$SDK" > /tmp/build.log
-          echo "PWD=$(pwd)" >> /tmp/build.log
-          echo "FILE=$(ls -la TrollRecorderBypass_v16.m 2>&1)" >> /tmp/build.log
-          echo "" >> /tmp/build.log
-          clang -arch arm64 -dynamiclib             -framework Foundation             -framework Security             -isysroot "$SDK"             -miphoneos-version-min=14.0             -fobjc-arc             -v             -o /tmp/test.dylib             TrollRecorderBypass_v16.m >> /tmp/build.log 2>&1
-          echo "EXIT_CODE=$?" >> /tmp/build.log
+          echo "SDK=$SDK" > ../build_log.txt
+          echo "PWD=$(pwd)" >> ../build_log.txt
+          echo "FILE=$(ls -la TrollRecorderBypass_v16.m 2>&1)" >> ../build_log.txt
+          echo "" >> ../build_log.txt
+          clang -arch arm64 -dynamiclib             -framework Foundation             -framework Security             -isysroot "$SDK"             -miphoneos-version-min=14.0             -fobjc-arc             -v             -o /tmp/test.dylib             TrollRecorderBypass_v16.m >> ../build_log.txt 2>&1
+          echo "" >> ../build_log.txt
+          echo "EXIT_CODE=$?" >> ../build_log.txt
+          echo "Build log size: $(wc -c < ../build_log.txt) bytes"
       
       - name: Upload log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
-          path: /tmp/build.log
+          path: build_log.txt
