@@ -1,13 +1,14 @@
 #!/bin/bash
-# TrollRecorder 验证绕过打包脚本 v11
-# 修复：inject_dylib.py v2 使用 header padding 空间
-# 不移动任何数据，不更新偏移量，不损坏二进制结构
-# 同时使用 LC_LOAD_WEAK_DYLIB（弱链接），dylib 加载失败也不会崩溃
+# TrollRecorder 验证绕过打包脚本 v12
+# 修复：1) 注入前移除旧签名，ldid -S 重新签名
+#       2) 改回 LC_LOAD_DYLIB（强链接）
+#       3) 加回方法替换逻辑（C 函数 IMP + pthread 延迟）
+# 原因：v11 的弱链接导致 dylib 未加载，旧签名未移除导致签名无效
 
 set -e
 
-echo "=== TrollRecorder Bypass v11 (padding-based injection) ==="
-echo "Fix: inject_dylib.py v2 uses header padding (no data shifting)"
+echo "=== TrollRecorder Bypass v12 (remove sig + strong link + method patch) ==="
+echo "Fix: Remove old signature before injection, use LC_LOAD_DYLIB, add method patching"
 echo "Date: $(date)"
 echo ""
 
@@ -45,6 +46,7 @@ clang -arch arm64 -dynamiclib \
     -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
     -miphoneos-version-min=14.0 \
     -fobjc-arc \
+    -I"$(xcrun --sdk iphoneos --show-sdk-path)/usr/include" \
     -o TrollRecorderBypass.dylib \
     "$BYPASS_DIR/TrollRecorderBypass.m"
 
@@ -157,8 +159,9 @@ echo ""
 echo "=== Done! ==="
 ls -la TRApp_ByPass.tipa
 echo ""
-echo "v11: inject_dylib.py v2 (padding-based injection)"
-echo "  - Uses header padding space (no data shifting)"
-echo "  - No segment offset updates needed"
-echo "  - Uses LC_LOAD_WEAK_DYLIB (app won't crash if dylib fails to load)"
-echo "  - Previous versions corrupted binaries by inserting bytes mid-file"
+echo "v12: Remove old signature + LC_LOAD_DYLIB + method patching"
+echo "  - Removes old code signature before injection (fixes 'invalid signature')"
+echo "  - Uses LC_LOAD_DYLIB (strong link, not weak)"
+echo "  - C function IMPs for method patching (no PAC issues)"
+echo "  - pthread delayed patching (5s after launch)"
+echo "  - ldid -S re-signs everything cleanly"
