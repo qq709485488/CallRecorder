@@ -53,9 +53,12 @@ fi
 echo "  ldid: $(which ldid) ($(file $(which ldid) 2>/dev/null | cut -d: -f2))"
 ldid --version 2>/dev/null || echo "  ldid installed"
 
-# 3. Binary Patch（第一阶段：修补 ObjC 方法）
+# 3. Binary Patch（第一阶段：修补 ObjC 方法，设置 SKIP_PATCH=1 跳过）
 echo ""
 echo "[3/7] Patching binary (ObjC method replacement)..."
+if [ "${SKIP_PATCH:-0}" = "1" ]; then
+    echo "  SKIP_PATCH=1, skipping binary patch step"
+else
 
 BINARIES="TRApp TRCallMonitor TRAudioRecorder TRCallRecorder TRSyncLite TRVoiceMemo TRAudioPlayer TRSpeechUtterance"
 
@@ -78,6 +81,8 @@ for binary in $BINARIES; do
         echo "    PATCHED: $binary"
     fi
 done
+
+fi
 
 # 4. 编译 dylib
 echo ""
