@@ -13,8 +13,8 @@
 #import <objc/runtime.h>
 #import <dlfcn.h>
 #import <mach-o/dyld.h>
+#import <mach-o/loader.h>
 #import <mach-o/getsect.h>
-#import <mach/mach.h>
 #import <mach-o/nlist.h>
 #import <sys/mman.h>
 #import <string.h>
@@ -97,8 +97,8 @@ static void _perform_rebinding_with_section(struct _rebindings_entry *entry,
 // Check if section is in a const segment, try mprotect if needed
 static int _ensure_writable(void *addr, size_t len) {
     // Round down to page boundary
-    uintptr_t page = (uintptr_t)addr & ~(PAGE_SIZE - 1);
-    size_t page_len = ((uintptr_t)addr + len - page + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+    uintptr_t page = (uintptr_t)addr & ~(16384 - 1);
+    size_t page_len = ((uintptr_t)addr + len - page + 16384 - 1) & ~(16384 - 1);
     return mprotect((void *)page, page_len, PROT_READ | PROT_WRITE);
 }
 
@@ -162,13 +162,13 @@ static void _perform_rebindings_with_header(struct _rebindings_entry *entry,
 
     // Restore original protection if we changed it
     if (need_restore_la) {
-        mprotect((void *)((uintptr_t)la_addr & ~(PAGE_SIZE - 1)),
-                 la_size + ((uintptr_t)la_addr & (PAGE_SIZE - 1)),
+        mprotect((void *)((uintptr_t)la_addr & ~(16384 - 1)),
+                 la_size + ((uintptr_t)la_addr & (16384 - 1)),
                  PROT_READ);
     }
     if (need_restore_nl) {
-        mprotect((void *)((uintptr_t)nl_addr & ~(PAGE_SIZE - 1)),
-                 nl_size + ((uintptr_t)nl_addr & (PAGE_SIZE - 1)),
+        mprotect((void *)((uintptr_t)nl_addr & ~(16384 - 1)),
+                 nl_size + ((uintptr_t)nl_addr & (16384 - 1)),
                  PROT_READ);
     }
 }
