@@ -9,18 +9,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       
-      - name: Compile (capture output)
+      - name: Compile (capture output, always pass)
         working-directory: ByPass
         run: |
           SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-          echo "SDK: $SDK" > /tmp/build.log
-          echo "Source: $(pwd)/TrollRecorderBypass_v16.m" >> /tmp/build.log
-          echo "" >> /tmp/build.log
-          clang -arch arm64 -dynamiclib             -framework Foundation             -framework Security             -isysroot "$SDK"             -miphoneos-version-min=14.0             -fobjc-arc             -v             -o /tmp/test.dylib             TrollRecorderBypass_v16.m >> /tmp/build.log 2>&1
-          echo "" >> /tmp/build.log
-          echo "EXIT_CODE=$?" >> /tmp/build.log
+          {
+            echo "SDK: $SDK"
+            echo "Source: $(pwd)/TrollRecorderBypass_v16.m"
+            echo ""
+            clang -arch arm64 -dynamiclib               -framework Foundation               -framework Security               -isysroot "$SDK"               -miphoneos-version-min=14.0               -fobjc-arc               -v               -o /tmp/test.dylib               TrollRecorderBypass_v16.m 2>&1
+            echo ""
+            echo "EXIT_CODE=$?"
+          } | tee /tmp/build.log
       
       - name: Upload build log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
