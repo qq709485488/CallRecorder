@@ -88,9 +88,11 @@ fi
 echo ""
 echo "[4/7] Compiling TrollRecorderBypass.dylib..."
 
-# 优先使用 v14 源文件
+# 优先使用 v15 源文件
 DYLIB_SRC=""
-if [ -f "$BYPASS_DIR/TrollRecorderBypass_v14.m" ]; then
+if [ -f "$BYPASS_DIR/TrollRecorderBypass_v15.m" ]; then
+    DYLIB_SRC="$BYPASS_DIR/TrollRecorderBypass_v15.m"
+elif [ -f "$BYPASS_DIR/TrollRecorderBypass_v14.m" ]; then
     DYLIB_SRC="$BYPASS_DIR/TrollRecorderBypass_v14.m"
 elif [ -f "TrollRecorderBypass_v14.m" ]; then
     DYLIB_SRC="TrollRecorderBypass_v14.m"
@@ -104,7 +106,6 @@ echo "  Source: $DYLIB_SRC"
 clang -arch arm64 -dynamiclib \
     -framework Foundation \
     -framework Security \
-    -framework CFNetwork \
     -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
     -miphoneos-version-min=14.0 \
     -fobjc-arc \
