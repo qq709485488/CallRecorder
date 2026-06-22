@@ -9,22 +9,48 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       
-      - name: Compile v16 only
+      - name: Diagnostics & Compile
         working-directory: ByPass
         run: |
-          echo "=== Checking SDK ==="
-          xcrun --sdk iphoneos --show-sdk-path
+          echo "=== System Info ==="
+          uname -m
+          xcodebuild -version
+          echo ""
+          
+          echo "=== SDK Path ==="
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          echo "SDK: $SDK"
+          ls -d "$SDK" 2>&1
+          echo ""
+          
+          echo "=== Header checks ==="
+          ls "$SDK/usr/include/mach-o/dyld.h" 2>&1
+          ls "$SDK/usr/include/mach-o/loader.h" 2>&1
+          ls "$SDK/usr/include/mach-o/nlist.h" 2>&1
+          ls "$SDK/usr/include/mach-o/getsect.h" 2>&1
+          ls "$SDK/usr/include/sys/mman.h" 2>&1
+          echo ""
+          
           echo "=== Source file ==="
           ls -la TrollRecorderBypass_v16.m
-          echo "=== Attempting compile ==="
+          head -5 TrollRecorderBypass_v16.m
+          echo ""
+          
+          echo "=== Check Foundation framework ==="
+          ls "$SDK/System/Library/Frameworks/Foundation.framework/Headers/Foundation.h" 2>&1
+          ls "$SDK/System/Library/Frameworks/Security.framework/Headers/Security.h" 2>&1
+          echo ""
+          
+          echo "=== Attempt compile with verbose ==="
           clang -arch arm64 -dynamiclib \
             -framework Foundation \
             -framework Security \
-            -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
+            -isysroot "$SDK" \
             -miphoneos-version-min=14.0 \
             -fobjc-arc \
             -v \
-            -o TrollRecorderBypass.dylib \
+            -o /tmp/TrollRecorderBypass.dylib \
             TrollRecorderBypass_v16.m 2>&1
+          echo ""
           echo "Exit code: $?"
-          ls -la TrollRecorderBypass.dylib 2>/dev/null && echo "SUCCESS" || echo "FAILED"
+          ls -la /tmp/TrollRecorderBypass.dylib 2>/dev/null && echo "SUCCESS" || echo "FAILED"
