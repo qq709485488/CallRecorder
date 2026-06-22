@@ -1,14 +1,15 @@
 #!/bin/bash
-# TrollRecorder 验证绕过打包脚本 v12
-# 修复：1) 注入前移除旧签名，ldid -S 重新签名
-#       2) 改回 LC_LOAD_DYLIB（强链接）
-#       3) 加回方法替换逻辑（C 函数 IMP + pthread 延迟）
-# 原因：v11 的弱链接导致 dylib 未加载，旧签名未移除导致签名无效
+# TrollRecorder 验证绕过打包脚本 v13
+# 策略：弱链接 + 移除旧签名 + 极简 dylib
+# - LC_LOAD_WEAK_DYLIB：dylib 加载失败也不崩溃
+# - 移除旧签名：ldid -S 从头签名，避免签名冲突
+# - 极简 dylib：只做 UserDefaults 预设，不调用 runtime API
+# 原因：v12 强链接导致 dylib 加载失败时崩溃，v13 改用弱链接
 
 set -e
 
-echo "=== TrollRecorder Bypass v12 (remove sig + strong link + method patch) ==="
-echo "Fix: Remove old signature before injection, use LC_LOAD_DYLIB, add method patching"
+echo "=== TrollRecorder Bypass v13 (weak link + remove sig + minimal dylib) ==="
+echo "Strategy: weak link + clean signature + minimal dylib (UserDefaults only)"
 echo "Date: $(date)"
 echo ""
 
@@ -159,9 +160,9 @@ echo ""
 echo "=== Done! ==="
 ls -la TRApp_ByPass.tipa
 echo ""
-echo "v12: Remove old signature + LC_LOAD_DYLIB + method patching"
-echo "  - Removes old code signature before injection (fixes 'invalid signature')"
-echo "  - Uses LC_LOAD_DYLIB (strong link, not weak)"
-echo "  - C function IMPs for method patching (no PAC issues)"
-echo "  - pthread delayed patching (5s after launch)"
+echo "v13: weak link + remove old signature + minimal dylib"
+echo "  - LC_LOAD_WEAK_DYLIB (app won't crash if dylib fails to load)"
+echo "  - Removes old code signature before injection"
 echo "  - ldid -S re-signs everything cleanly"
+echo "  - Minimal dylib: only UserDefaults, no runtime API calls"
+echo "  - If this still crashes, the problem is in binary patching itself"

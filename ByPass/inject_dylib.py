@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Inject a dylib load command into a Mach-O binary.
-v3: Remove old code signature before injection, then ldid -S will re-sign.
-    Use LC_LOAD_DYLIB (strong link) instead of weak link.
+v4: Remove old code signature before injection, then ldid -S will re-sign.
+    Use LC_LOAD_WEAK_DYLIB (weak link) - app won't crash if dylib fails to load.
+    This is the safest combination: clean signature + weak link.
 """
 
 import struct
@@ -9,7 +10,7 @@ import sys
 import os
 
 MH_MAGIC_64 = 0xFEEDFACF
-LC_LOAD_DYLIB = 0xC
+LC_LOAD_WEAK_DYLIB = 0x18  # weak link - app won't crash if dylib missing
 LC_CODE_SIGNATURE = 0x1D
 LC_SEGMENT_64 = 0x19
 
@@ -116,13 +117,13 @@ def inject_macho_64(data, dylib_path, output_path, verbose=True):
     if verbose:
         print(f"  Step 2: ncmds={ncmds} sizeofcmds={sizeofcmds}")
     
-    # Step 3: Build LC_LOAD_DYLIB command
+    # Step 3: Build LC_LOAD_WEAK_DYLIB command
     dylib_path_bytes = dylib_path.encode('utf-8') + b'\x00'
     cmd_size = 24 + len(dylib_path_bytes)
     cmd_size = (cmd_size + 7) & ~7  # Align to 8 bytes
     padded_path = dylib_path_bytes + b'\x00' * (cmd_size - 24 - len(dylib_path_bytes))
     
-    dylib_cmd = struct.pack('<II', LC_LOAD_DYLIB, cmd_size)
+    dylib_cmd = struct.pack('<II', LC_LOAD_WEAK_DYLIB, cmd_size)
     dylib_cmd += struct.pack('<III', 24, 2, 0)  # name offset, timestamp, current version
     dylib_cmd += struct.pack('<I', 0)  # compatibility version
     dylib_cmd += padded_path
@@ -161,7 +162,7 @@ def inject_macho_64(data, dylib_path, output_path, verbose=True):
     struct.pack_into('<II', data, 16, new_ncmds, new_sizeofcmds)
     
     if verbose:
-        print(f"  Step 4: Written LC_LOAD_DYLIB at offset {write_offset}")
+        print(f"  Step 4: Written LC_LOAD_WEAK_DYLIB at offset {write_offset}")
         print(f"  Updated: ncmds={new_ncmds} sizeofcmds={new_sizeofcmds}")
     
     if output_path:
