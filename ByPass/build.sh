@@ -8,8 +8,8 @@
 
 set -e
 
-echo "=== TrollRecorder Bypass v9 (ObjC-Only) ==="
-echo "Strategy: Patch KeychainHelper + UserDefaults + ObjC method swizzling"
+echo "=== TrollRecorder Bypass v10 (C functions + pthread) ==="
+echo "Strategy: C function IMPs (no blocks) + pthread delayed patching"
 echo "Target: Original TRApp_2.14-542"
 echo "Date: $(date)"
 echo ""
@@ -36,10 +36,9 @@ fi
 ldid --version 2>/dev/null || echo "ldid installed"
 
 # 3. 编译 dylib
-echo "[3/6] Compiling TrollRecorderBypass.dylib (no C hooks, ObjC-only)..."
+echo "[3/6] Compiling TrollRecorderBypass.dylib (C functions, no blocks)..."
 clang -arch arm64 -dynamiclib \
     -framework Foundation \
-    -framework Security \
     -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
     -miphoneos-version-min=14.0 \
     -fobjc-arc \
@@ -134,8 +133,8 @@ echo ""
 echo "=== Done! ==="
 ls -la TRApp_ByPass.tipa
 echo ""
-echo "v9 Dylib: ObjC-only approach - no C function hooks"
-echo "  - Patches known Keychain/Payment/License classes by name"
-echo "  - Sets UserDefaults for all verification keys"
-echo "  - Globally patches TR*/BSG*/Havoc* class methods"
-echo "  - Safe: no SecItemCopyMatching hooking (was causing crashes)"
+echo "v10 Dylib: C function IMPs + pthread delayed patching"
+echo "  - C functions for IMP (no blocks, no arm64e PAC crashes)"
+echo "  - pthread_create + sleep(3) for safe delayed patching"
+echo "  - UserDefaults preset + known class method patching"
+echo "  - No Security framework dependency"
