@@ -276,20 +276,20 @@ static void installMethodSwizzles(void) {
         if (m) method_setImplementation(m, boolNO);
     }
     
-    // BugSnag FeatureFlag 预置
+    // BugSnag FeatureFlag 预置（运行时调用，使用 performSelector 避免编译时检查）
     Class bsgClass = NSClassFromString(@"BSGFeatureFlagStore");
     if (bsgClass) {
-        // 尝试预置 Pro feature flags
         SEL sharedSel = NSSelectorFromString(@"sharedInstance");
         id store = nil;
         if ([bsgClass respondsToSelector:sharedSel]) {
             store = [bsgClass performSelector:sharedSel];
         }
-        if (store && [store respondsToSelector:@selector(addFeatureFlagWithName:variant:)]) {
+        SEL addFlagSel = NSSelectorFromString(@"addFeatureFlagWithName:variant:");
+        if (store && [store respondsToSelector:addFlagSel]) {
             NSArray *flags = @[@"pro.systemAudio", @"pro.backgroundKeepAlive", 
                               @"pro.iCloudBackup", @"pro.smartCloudArchive", @"pro.exclusiveFeatures"];
             for (NSString *flagName in flags) {
-                [store addFeatureFlagWithName:flagName variant:@"enabled"];
+                [store performSelector:addFlagSel withObject:flagName withObject:@"enabled"];
             }
         }
     }
