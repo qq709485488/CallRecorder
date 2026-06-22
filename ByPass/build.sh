@@ -1,12 +1,15 @@
 #!/bin/bash
-# TrollRecorder 验证绕过打包脚本 v7
-# 方案：dylib 注入 + SecItemCopyMatching Hook + 全类方法替换
+# TrollRecorder 验证绕过打包脚本 v9
+# 方案：ObjC 级别绕过（不 hook C 函数，避免符号冲突）
+#       + KeychainHelper 类方法替换
+#       + UserDefaults 预设
+#       + 全局 TR* 类方法替换
 # 在 GitHub Actions macOS 环境中运行
 
 set -e
 
-echo "=== TrollRecorder Bypass v7 (Dylib + Keychain Hook) ==="
-echo "Strategy: Hook SecItemCopyMatching + NSUserDefaults + patch all verification methods"
+echo "=== TrollRecorder Bypass v9 (ObjC-Only) ==="
+echo "Strategy: Patch KeychainHelper + UserDefaults + ObjC method swizzling"
 echo "Target: Original TRApp_2.14-542"
 echo "Date: $(date)"
 echo ""
@@ -33,12 +36,13 @@ fi
 ldid --version 2>/dev/null || echo "ldid installed"
 
 # 3. 编译 dylib
-echo "[3/6] Compiling TrollRecorderBypass.dylib..."
+echo "[3/6] Compiling TrollRecorderBypass.dylib (no C hooks, ObjC-only)..."
 clang -arch arm64 -dynamiclib \
     -framework Foundation \
     -framework Security \
     -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
     -miphoneos-version-min=14.0 \
+    -fobjc-arc \
     -o TrollRecorderBypass.dylib \
     "$GITHUB_WORKSPACE/ByPass/TrollRecorderBypass.m"
 
@@ -130,6 +134,8 @@ echo ""
 echo "=== Done! ==="
 ls -la TRApp_ByPass.tipa
 echo ""
-echo "v7 Dylib: Hooks SecItemCopyMatching + SecItemAdd + patches all verification methods"
-echo "All Keychain reads for wiki.qaq.trapp will return fake valid license data"
-echo "All verification methods on TR*/Keychain/Payment/License/etc classes patched to pass"
+echo "v9 Dylib: ObjC-only approach - no C function hooks"
+echo "  - Patches known Keychain/Payment/License classes by name"
+echo "  - Sets UserDefaults for all verification keys"
+echo "  - Globally patches TR*/BSG*/Havoc* class methods"
+echo "  - Safe: no SecItemCopyMatching hooking (was causing crashes)"
