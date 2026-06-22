@@ -1,3 +1,9 @@
+// ============================================================
+// TrollRecorder 验证绕过 dylib v8
+// 核心策略：DYLD_INTERPOSE Hook Keychain + UserDefaults 预设 + 全面方法替换
+// 修复：使用 DYLD_INTERPOSE 替代手动函数覆盖，避免符号冲突导致闪退
+// ============================================================
+
 #include <stdio.h>
 #include <dlfcn.h>
 #include <objc/runtime.h>
@@ -5,14 +11,14 @@
 #include <Foundation/Foundation.h>
 #include <Security/Security.h>
 
-// ============================================================
-// TrollRecorder 验证绕过 dylib v7
-// 核心策略：Hook 数据源（Keychain + UserDefaults），而非逐个方法
-// ============================================================
-
-// ---- 原始函数指针 ----
-static OSStatus (*orig_SecItemCopyMatching)(CFDictionaryRef query, CFTypeRef *result) = NULL;
-static OSStatus (*orig_SecItemAdd)(CFDictionaryRef attributes, CFTypeRef *result) = NULL;
+// ---- DYLD_INTERPOSE 宏 ----
+#define DYLD_INTERPOSE(_replacement, _original) \
+    __attribute__((used, section("__DATA,__interpose"))) \
+    static const struct { \
+        unsigned long long replacement; \
+        unsigned long long original; \
+    } _dyld_interpose_ ## _replacement = \
+    { (unsigned long long)&_replacement, (unsigned long long)&_original }
 
 // ---- 需要拦截的 Keychain account 和返回数据 ----
 static NSDictionary *fakeKeychainData(void) {
@@ -35,40 +41,22 @@ static NSDictionary *fakeKeychainData(void) {
 // ---- 应用相关 Keychain service ----
 static BOOL isAppKeychainService(CFStringRef service) {
     if (!service) return NO;
-    // 匹配所有 wiki.qaq.trapp 相关的 service
-    NSArray *services = @[
-        @"wiki.qaq.trapp",
-        @"group.wiki.qaq.trapp",
-        @"GXZ23M5TP2.wiki.qaq.trapp",
-        @"GXZ23M5TP2.iCloud.wiki.qaq.trapp.icloud-container",
-        @"wiki.qaq.trapp.xpc",
-    ];
     NSString *s = (__bridge NSString *)service;
-    for (NSString *svc in services) {
-        if ([s isEqualToString:svc] || [s containsString:svc] || [svc containsString:s]) {
-            return YES;
-        }
-    }
-    // 也匹配包含 "wiki.qaq.trapp" 的
     if ([s containsString:@"wiki.qaq.trapp"]) return YES;
     return NO;
 }
 
-// ---- Hook SecItemCopyMatching ----
-OSStatus SecItemCopyMatching(CFDictionaryRef query, CFTypeRef *result) {
-    // 获取原始函数
-    if (!orig_SecItemCopyMatching) {
-        orig_SecItemCopyMatching = dlsym(RTLD_DEFAULT, "SecItemCopyMatching");
-        if (!orig_SecItemCopyMatching || orig_SecItemCopyMatching == SecItemCopyMatching) {
-            // 自己找自己，说明还未加载，尝试 dlopen
-            void *handle = dlopen("/System/Library/Frameworks/Security.framework/Security", RTLD_LAZY | RTLD_NOLOAD);
-            if (handle) {
-                orig_SecItemCopyMatching = dlsym(handle, "SecItemCopyMatching");
-            }
+// ---- Hook SecItemCopyMatching（DYLD_INTERPOSE 方式）----
+static OSStatus hooked_SecItemCopyMatching(CFDictionaryRef query, CFTypeRef *result) {
+    // 使用 RTLD_NEXT 获取真正的原始函数
+    static OSStatus (*real)(CFDictionaryRef, CFTypeRef*) = NULL;
+    if (!real) {
+        real = dlsym(RTLD_NEXT, "SecItemCopyMatching");
+        if (!real) {
+            void *h = dlopen("/System/Library/Frameworks/Security.framework/Security", RTLD_NOLOAD);
+            if (h) real = dlsym(h, "SecItemCopyMatching");
         }
-        if (!orig_SecItemCopyMatching || orig_SecItemCopyMatching == SecItemCopyMatching) {
-            return errSecNotAvailable;
-        }
+        if (!real) return errSecNotAvailable;
     }
     
     if (query && result) {
@@ -77,152 +65,89 @@ OSStatus SecItemCopyMatching(CFDictionaryRef query, CFTypeRef *result) {
         
         if (isAppKeychainService(service) && account) {
             NSString *acct = (__bridge NSString *)account;
-            NSDictionary *fakeData = fakeKeychainData();
-            NSString *fakeStr = fakeData[acct];
-            
-            if (fakeStr) {
-                // 检查是否是返回数据的查询
-                if (CFDictionaryGetValue(query, kSecReturnData)) {
-                    *result = (__bridge_retained CFDataRef)[fakeStr dataUsingEncoding:NSUTF8StringEncoding];
-                    return errSecSuccess;
-                }
+            NSDictionary *fake = fakeKeychainData();
+            NSString *val = fake[acct];
+            if (val && CFDictionaryGetValue(query, kSecReturnData)) {
+                *result = (__bridge CFDataRef)[val dataUsingEncoding:NSUTF8StringEncoding];
+                return errSecSuccess;
             }
-            
-            // 对于任何查询，如果匹配 app service，返回成功
-            // 如果查询需要返回数据但没有预置数据，返回空数据
             if (CFDictionaryGetValue(query, kSecReturnData)) {
-                *result = (__bridge_retained CFDataRef)[@"{\"valid\":true,\"status\":\"active\"}" dataUsingEncoding:NSUTF8StringEncoding];
+                *result = (__bridge CFDataRef)[@"{\"valid\":true,\"status\":\"active\"}" dataUsingEncoding:NSUTF8StringEncoding];
                 return errSecSuccess;
             }
         }
         
-        // 也检查 kSecAttrService 为 nil 但有 access group 的情况
         if (!service) {
-            CFStringRef accessGroup = CFDictionaryGetValue(query, kSecAttrAccessGroup);
-            if (accessGroup && isAppKeychainService(accessGroup)) {
-                if (CFDictionaryGetValue(query, kSecReturnData)) {
-                    *result = (__bridge_retained CFDataRef)[@"{\"valid\":true}" dataUsingEncoding:NSUTF8StringEncoding];
-                    return errSecSuccess;
-                }
+            CFStringRef ag = CFDictionaryGetValue(query, kSecAttrAccessGroup);
+            if (isAppKeychainService(ag) && CFDictionaryGetValue(query, kSecReturnData)) {
+                *result = (__bridge CFDataRef)[@"{\"valid\":true}" dataUsingEncoding:NSUTF8StringEncoding];
+                return errSecSuccess;
             }
         }
     }
     
-    return orig_SecItemCopyMatching(query, result);
+    return real(query, result);
 }
 
-// ---- Hook SecItemAdd ----
-OSStatus SecItemAdd(CFDictionaryRef attributes, CFTypeRef *result) {
-    if (!orig_SecItemAdd) {
-        orig_SecItemAdd = dlsym(RTLD_DEFAULT, "SecItemAdd");
-        if (!orig_SecItemAdd || orig_SecItemAdd == SecItemAdd) {
-            void *handle = dlopen("/System/Library/Frameworks/Security.framework/Security", RTLD_LAZY | RTLD_NOLOAD);
-            if (handle) {
-                orig_SecItemAdd = dlsym(handle, "SecItemAdd");
-            }
+// ---- Hook SecItemAdd（DYLD_INTERPOSE 方式）----
+static OSStatus hooked_SecItemAdd(CFDictionaryRef attributes, CFTypeRef *result) {
+    static OSStatus (*real)(CFDictionaryRef, CFTypeRef*) = NULL;
+    if (!real) {
+        real = dlsym(RTLD_NEXT, "SecItemAdd");
+        if (!real) {
+            void *h = dlopen("/System/Library/Frameworks/Security.framework/Security", RTLD_NOLOAD);
+            if (h) real = dlsym(h, "SecItemAdd");
         }
-        if (!orig_SecItemAdd || orig_SecItemAdd == SecItemAdd) {
-            return errSecNotAvailable;
-        }
+        if (!real) return errSecNotAvailable;
     }
     
     // 对于 app 的 Keychain 写入，假装成功
     if (attributes) {
         CFStringRef service = CFDictionaryGetValue(attributes, kSecAttrService);
-        if (isAppKeychainService(service)) {
-            return errSecSuccess;
-        }
+        if (isAppKeychainService(service)) return errSecSuccess;
     }
-    
-    return orig_SecItemAdd(attributes, result);
+    return real(attributes, result);
 }
 
-// ---- NSUserDefaults 验证相关 key 列表 ----
+// ---- DYLD_INTERPOSE 声明 ----
+DYLD_INTERPOSE(hooked_SecItemCopyMatching, SecItemCopyMatching);
+DYLD_INTERPOSE(hooked_SecItemAdd, SecItemAdd);
+
+// ---- NSUserDefaults 验证相关 key ----
 static NSSet *verificationKeys(void) {
     static NSSet *keys = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         keys = [NSSet setWithArray:@[
-            // 许可证相关
             @"isLicensed", @"hasValidLicense", @"licenseVerified", @"licenseKey",
             @"licensePlan", @"licenseExpiryDate", @"licenseToken", @"purchaseRequiredToken",
-            // 签名验证
             @"shouldSkipCodeSignatureVerification", @"isSignatureValid", @"isCodeSignatureValid",
-            // 提示
             @"_shouldPromptLicense", @"previousShouldPromptLicense",
             @"ApplicationLicenseNeedsPromptOnNextLaunch",
             @"ApplicationDidPresentPurchaseIntro", @"ApplicationDidPresentLoginIntro",
-            // 验证要求
             @"requireVerification", @"requireLinkDevice", @"isVerificationRequired",
             @"needsVerification", @"needsAuthentication", @"needsLicense",
-            // 购买/高级
             @"isPro", @"isPremium", @"isPaid", @"isFullVersion", @"isUnlocked",
             @"isActivated", @"isActivatedDevice",
             @"isPurchaseValid", @"isReceiptValid", @"hasActiveSubscription",
-            // 状态
             @"isBlocked", @"isSuspended", @"isRevoked", @"isRestricted",
             @"isTrialValid", @"isTrialExpired", @"isLicenseExpired",
-            // 功能
             @"isFeatureEnabled", @"isFeatureAvailable", @"isModuleEnabled",
-            // 访问
             @"shouldAllowAccess", @"canProceed", @"canAccess",
             @"isUserAuthenticated", @"isDeviceRegistered",
-            // API
             @"apiKey", @"userToken", @"authToken",
         ]];
     });
     return keys;
 }
 
-// 返回 YES 的 key
-static NSSet *returnYesKeys(void) {
-    static NSSet *keys = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        keys = [NSSet setWithArray:@[
-            @"isLicensed", @"hasValidLicense", @"licenseVerified",
-            @"shouldSkipCodeSignatureVerification", @"isSignatureValid", @"isCodeSignatureValid",
-            @"ApplicationDidPresentPurchaseIntro", @"ApplicationDidPresentLoginIntro",
-            @"isPro", @"isPremium", @"isPaid", @"isFullVersion", @"isUnlocked",
-            @"isActivated", @"isActivatedDevice",
-            @"isPurchaseValid", @"isReceiptValid", @"hasActiveSubscription",
-            @"isFeatureEnabled", @"isFeatureAvailable", @"isModuleEnabled",
-            @"shouldAllowAccess", @"canProceed", @"canAccess",
-            @"isUserAuthenticated", @"isDeviceRegistered",
-            @"isTrialValid",
-        ]];
-    });
-    return keys;
-}
-
 // ---- 方法替换工具 ----
-static BOOL patchMethod(Class cls, const char *selName, IMP newImp) {
-    SEL sel = sel_getUid(selName);
-    if (!sel) return NO;
+static void patchMethodOnClass(Class cls, SEL sel, IMP imp) {
+    if (!cls || !sel || !imp) return;
     Method m = class_getInstanceMethod(cls, sel);
-    if (!m) {
-        m = class_getClassMethod(cls, sel);
-        if (!m) return NO;
-    }
-    method_setImplementation(m, newImp);
-    return YES;
-}
-
-static Class findClass(const char *partialName) {
-    int numClasses = objc_getClassList(NULL, 0);
-    if (numClasses <= 0) return NULL;
-    Class *classes = (Class *)malloc(sizeof(Class) * numClasses);
-    objc_getClassList(classes, numClasses);
-    Class found = NULL;
-    for (int i = 0; i < numClasses; i++) {
-        const char *name = class_getName(classes[i]);
-        if (strstr(name, partialName) != NULL) {
-            found = classes[i];
-            break;
-        }
-    }
-    free(classes);
-    return found;
+    if (m) { method_setImplementation(m, imp); return; }
+    m = class_getClassMethod(cls, sel);
+    if (m) method_setImplementation(m, imp);
 }
 
 // ---- 设置 UserDefaults ----
@@ -278,33 +203,7 @@ static void setupUserDefaults(void) {
     }
 }
 
-// ---- 设置 Keychain ----
-static void setupKeychain(void) {
-    NSDictionary *fakeData = fakeKeychainData();
-    NSArray *services = @[@"wiki.qaq.trapp", @"GXZ23M5TP2.wiki.qaq.trapp"];
-    
-    for (NSString *svc in services) {
-        for (NSString *acct in fakeData) {
-            NSString *value = fakeData[acct];
-            NSDictionary *addQuery = @{
-                (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
-                (__bridge id)kSecAttrAccount: acct,
-                (__bridge id)kSecAttrService: svc,
-                (__bridge id)kSecValueData: [value dataUsingEncoding:NSUTF8StringEncoding],
-                (__bridge id)kSecAttrAccessible: (__bridge id)kSecAttrAccessibleAfterFirstUnlock,
-            };
-            OSStatus status = orig_SecItemAdd((__bridge CFDictionaryRef)addQuery, NULL);
-            if (status == errSecDuplicateItem) {
-                NSDictionary *update = @{
-                    (__bridge id)kSecValueData: [value dataUsingEncoding:NSUTF8StringEncoding],
-                };
-                orig_SecItemAdd ? SecItemUpdate((__bridge CFDictionaryRef)addQuery, (__bridge CFDictionaryRef)update) : (void)0;
-            }
-        }
-    }
-}
-
-// ---- 全面方法替换 ----
+// ---- 全面方法替换（精简版，避免误伤系统类）----
 static void patchAllVerificationMethods(void) {
     int numClasses = objc_getClassList(NULL, 0);
     if (numClasses <= 0) return;
@@ -313,7 +212,7 @@ static void patchAllVerificationMethods(void) {
     objc_getClassList(classes, numClasses);
     
     // 返回 BOOL YES 的 selector
-    const char *returnYesSelectors[] = {
+    const char *yesSelectors[] = {
         "isLicensed", "hasValidLicense", "isValidApiKey:", "isValidLicense:",
         "isPro", "isPremium", "isPaid", "isFullVersion", "isUnlocked",
         "isActivated", "isActivatedDevice", "isPurchaseValid", "isReceiptValid",
@@ -324,7 +223,6 @@ static void patchAllVerificationMethods(void) {
         "isUserAuthenticated", "isDeviceRegistered", "isTrialValid",
         "isValidSignature", "verifySignature", "checkLicense", "verifyLicense",
         "validateLicense", "checkLicenseStatus", "checkReceipt", "verifyReceipt",
-        "isReceiptValid", "validateReceipt", "isLicenseKeyValid",
         "isValidApiKey", "checkCodeSignature", "verifyCodeSignature",
         "checkEntitlements", "verifyEntitlements", "verifyAppIntegrity",
         "checkAppIntegrity", "agreeToLicense",
@@ -333,7 +231,7 @@ static void patchAllVerificationMethods(void) {
     };
     
     // 返回 BOOL NO 的 selector
-    const char *returnNoSelectors[] = {
+    const char *noSelectors[] = {
         "_shouldPromptLicense", "shouldPromptLicense", "shouldPresentLicensePrompt",
         "needsLicensePrompt", "shouldShowPurchaseUI", "shouldCheckLicense",
         "needsLicenseCheck", "shouldPresentLicense", "shouldShowPurchase",
@@ -345,106 +243,74 @@ static void patchAllVerificationMethods(void) {
     };
     
     IMP returnYesIMP = imp_implementationWithBlock(^BOOL(id self) { return YES; });
-    IMP returnYesWithArgIMP = imp_implementationWithBlock(^BOOL(id self, id arg) { return YES; });
+    IMP returnYesArgIMP = imp_implementationWithBlock(^BOOL(id self, id arg) { return YES; });
     IMP returnNoIMP = imp_implementationWithBlock(^BOOL(id self) { return NO; });
     
     int patched = 0;
     for (int i = 0; i < numClasses && patched < 500; i++) {
-        const char *className = class_getName(classes[i]);
-        if (!className) continue;
+        const char *cn = class_getName(classes[i]);
+        if (!cn) continue;
         
-        // 只处理 app 命名空间相关的类
-        // 检查是否是 TR* 前缀或包含关键名称
+        // 严格匹配：只处理 TR* 前缀或 TR* 子系统的类
         BOOL isAppClass = NO;
-        if (strncmp(className, "TR", 2) == 0) isAppClass = YES;
-        else if (strstr(className, "Keychain") != NULL) isAppClass = YES;
-        else if (strstr(className, "Payment") != NULL) isAppClass = YES;
-        else if (strstr(className, "License") != NULL) isAppClass = YES;
-        else if (strstr(className, "Root") != NULL) isAppClass = YES;
-        else if (strstr(className, "Feature") != NULL) isAppClass = YES;
-        else if (strstr(className, "Purchase") != NULL) isAppClass = YES;
-        else if (strstr(className, "Receipt") != NULL) isAppClass = YES;
-        else if (strstr(className, "Signature") != NULL) isAppClass = YES;
-        else if (strstr(className, "Entitlement") != NULL) isAppClass = YES;
-        else if (strstr(className, "BSG") == className) isAppClass = YES;
-        else if (strstr(className, "Havoc") != NULL) isAppClass = YES;
-        else if (strstr(className, "App") != NULL) isAppClass = YES;
-        else if (strstr(className, "Settings") != NULL) isAppClass = YES;
-        else if (strstr(className, "Config") != NULL) isAppClass = YES;
-        else if (strstr(className, "Store") != NULL) isAppClass = YES;
-        else if (strstr(className, "Manager") != NULL) isAppClass = YES;
+        if (strncmp(cn, "TR", 2) == 0) isAppClass = YES;
+        else if (strncmp(cn, "_TtC", 4) == 0) {
+            // Swift 类名形如 _TtC12TrollRecorder11MyClass
+            // 需要进一步检查是否包含应用相关名称
+            if (strstr(cn, "Troll") || strstr(cn, "troll") || strstr(cn, "TR") || strstr(cn, "Tr")) {
+                isAppClass = YES;
+            }
+        }
+        else if (strstr(cn, "Keychain") && strstr(cn, "TR")) isAppClass = YES;
+        else if (strstr(cn, "Payment") && strstr(cn, "TR")) isAppClass = YES;
+        else if (strstr(cn, "License") && strstr(cn, "TR")) isAppClass = YES;
+        else if (strstr(cn, "Receipt") && strstr(cn, "TR")) isAppClass = YES;
+        else if (strstr(cn, "Havoc") != NULL) isAppClass = YES;
+        else if (strncmp(cn, "BSG", 3) == 0) isAppClass = YES;
         
         if (!isAppClass) continue;
         
         // 返回 YES 的方法
-        for (int j = 0; returnYesSelectors[j] != NULL; j++) {
-            SEL sel = sel_getUid(returnYesSelectors[j]);
+        for (int j = 0; yesSelectors[j]; j++) {
+            SEL sel = sel_getUid(yesSelectors[j]);
             if (!sel) continue;
-            Method m = class_getInstanceMethod(classes[i], sel);
-            if (!m) m = class_getClassMethod(classes[i], sel);
-            if (!m) continue;
-            
-            // 检查是否有参数
-            const char *selName = sel_getName(sel);
-            BOOL hasArg = (strchr(selName, ':') != NULL);
-            method_setImplementation(m, hasArg ? returnYesWithArgIMP : returnYesIMP);
+            const char *sn = sel_getName(sel);
+            BOOL hasArg = (strchr(sn, ':') != NULL);
+            patchMethodOnClass(classes[i], sel, hasArg ? returnYesArgIMP : returnYesIMP);
             patched++;
         }
         
         // 返回 NO 的方法
-        for (int j = 0; returnNoSelectors[j] != NULL; j++) {
-            SEL sel = sel_getUid(returnNoSelectors[j]);
+        for (int j = 0; noSelectors[j]; j++) {
+            SEL sel = sel_getUid(noSelectors[j]);
             if (!sel) continue;
-            Method m = class_getInstanceMethod(classes[i], sel);
-            if (!m) m = class_getClassMethod(classes[i], sel);
-            if (!m) continue;
-            method_setImplementation(m, returnNoIMP);
+            patchMethodOnClass(classes[i], sel, returnNoIMP);
             patched++;
         }
     }
     free(classes);
-    printf("[TrollRecorderBypass v7] Patched %d verification methods\n", patched);
+    printf("[TrollRecorderBypass v8] Patched %d verification methods\n", patched);
 }
 
 // ---- 构造函数 ----
 __attribute__((constructor))
 static void init(void) {
     @autoreleasepool {
-        // 1. 初始化原始函数指针
-        void *handle = dlopen("/System/Library/Frameworks/Security.framework/Security", RTLD_LAZY | RTLD_NOLOAD);
-        if (handle) {
-            orig_SecItemCopyMatching = dlsym(handle, "SecItemCopyMatching");
-            orig_SecItemAdd = dlsym(handle, "SecItemAdd");
-        }
-        if (!orig_SecItemCopyMatching) {
-            orig_SecItemCopyMatching = dlsym(RTLD_DEFAULT, "SecItemCopyMatching");
-        }
-        if (!orig_SecItemAdd) {
-            orig_SecItemAdd = dlsym(RTLD_DEFAULT, "SecItemAdd");
-        }
-        
-        // 2. 设置 UserDefaults
+        // 1. 设置 UserDefaults
         setupUserDefaults();
         
-        // 3. 设置 Keychain（使用原始函数写入）
-        if (orig_SecItemAdd) {
-            setupKeychain();
-        }
-        
-        // 4. 延迟执行方法替换（使用 dispatch_after 兼容主进程和守护进程）
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_MSEC), 
+        // 2. 延迟执行方法替换
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 200 * NSEC_PER_MSEC),
             dispatch_get_main_queue(), ^{
             patchAllVerificationMethods();
         });
         
-        // 5. 也通过 dispatch_async 确保在守护进程中也能执行
+        // 3. 守护进程兼容：如果主队列没执行，全局队列兜底
         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-            // 等待 1 秒后检查是否已在主线程执行过
-            sleep(1);
-            // 如果主线程没执行（守护进程），在后台线程执行
-            static int patched = 0;
-            if (!patched) {
-                patched = 1;
+            sleep(2);
+            static int done = 0;
+            if (!done) {
+                done = 1;
                 patchAllVerificationMethods();
             }
         });
