@@ -1,0 +1,30 @@
+name: Debug Compile v16
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Compile v16 only
+        working-directory: ByPass
+        run: |
+          echo "=== Checking SDK ==="
+          xcrun --sdk iphoneos --show-sdk-path
+          echo "=== Source file ==="
+          ls -la TrollRecorderBypass_v16.m
+          echo "=== Attempting compile ==="
+          clang -arch arm64 -dynamiclib \
+            -framework Foundation \
+            -framework Security \
+            -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
+            -miphoneos-version-min=14.0 \
+            -fobjc-arc \
+            -v \
+            -o TrollRecorderBypass.dylib \
+            TrollRecorderBypass_v16.m 2>&1
+          echo "Exit code: $?"
+          ls -la TrollRecorderBypass.dylib 2>/dev/null && echo "SUCCESS" || echo "FAILED"
