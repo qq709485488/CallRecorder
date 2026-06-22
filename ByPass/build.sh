@@ -12,6 +12,11 @@ echo "Date: $(date)"
 echo ""
 
 GITHUB_WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"
+BYPASS_DIR="$GITHUB_WORKSPACE/ByPass"
+# 如果 ByPass 目录不存在（本地运行），使用当前目录
+if [ ! -d "$BYPASS_DIR" ]; then
+    BYPASS_DIR="$(pwd)"
+fi
 
 # 1. 解压原始 .tipa
 echo "[1/6] Extracting original .tipa..."
@@ -41,7 +46,7 @@ clang -arch arm64 -dynamiclib \
     -miphoneos-version-min=14.0 \
     -fobjc-arc \
     -o TrollRecorderBypass.dylib \
-    "$GITHUB_WORKSPACE/ByPass/TrollRecorderBypass.m"
+    "$BYPASS_DIR/TrollRecorderBypass.m"
 
 if [ ! -f TrollRecorderBypass.dylib ]; then
     echo "ERROR: Failed to compile dylib"
@@ -57,7 +62,13 @@ echo "[4/6] Injecting dylib (padding-based, no data shifting)..."
 cd "extracted/Payload/TRApp.app"
 
 # 复制 dylib 到 app 目录
-cp "$GITHUB_WORKSPACE/TrollRecorderBypass.dylib" .
+cp "$BYPASS_DIR/TrollRecorderBypass.dylib" . 2>/dev/null || cp TrollRecorderBypass.dylib . 2>/dev/null || {
+    echo "  ERROR: Cannot find TrollRecorderBypass.dylib"
+    echo "  Looking in: $BYPASS_DIR/ and current dir"
+    ls -la "$BYPASS_DIR/"*.dylib 2>/dev/null || true
+    ls -la ./*.dylib 2>/dev/null || true
+    exit 1
+}
 
 BINARIES="TRApp TRCallMonitor TRAudioRecorder TRCallRecorder TRSyncLite TRVoiceMemo TRAudioPlayer TRSpeechUtterance"
 
@@ -79,7 +90,7 @@ for binary in $BINARIES; do
     cp "$binary" "${binary}.orig"
     
     # 使用修复后的 Python 脚本注入（弱链接，dylib 加载失败也不崩溃）
-    python3 "$GITHUB_WORKSPACE/ByPass/inject_dylib.py" "$binary" "@executable_path/TrollRecorderBypass.dylib" "${binary}_patched" || {
+    python3 "$BYPASS_DIR/inject_dylib.py" "$binary" "@executable_path/TrollRecorderBypass.dylib" "${binary}_patched" || {
         echo "    Injection FAILED, keeping original"
         cp "${binary}.orig" "$binary"
         rm -f "${binary}_patched"
@@ -137,7 +148,7 @@ fi
 # 6. 重新打包
 echo ""
 echo "[6/6] Repackaging as .tipa..."
-cd "$GITHUB_WORKSPACE"
+cd "$BYPASS_DIR"
 cd extracted
 ditto -c -k --sequesterRsrc --keepParent Payload ../TRApp_ByPass.tipa
 cd ..
