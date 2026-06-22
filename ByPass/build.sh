@@ -95,12 +95,6 @@ elif [ -f "$BYPASS_DIR/TrollRecorderBypass_v15.m" ]; then
     DYLIB_SRC="$BYPASS_DIR/TrollRecorderBypass_v15.m"
 elif [ -f "$BYPASS_DIR/TrollRecorderBypass_v14.m" ]; then
     DYLIB_SRC="$BYPASS_DIR/TrollRecorderBypass_v14.m"
-elif [ -f "TrollRecorderBypass_v14.m" ]; then
-    DYLIB_SRC="TrollRecorderBypass_v14.m"
-elif [ -f "$BYPASS_DIR/TrollRecorderBypass.m" ]; then
-    DYLIB_SRC="$BYPASS_DIR/TrollRecorderBypass.m"
-else
-    DYLIB_SRC="TrollRecorderBypass.m"
 fi
 echo "  Source: $DYLIB_SRC"
 

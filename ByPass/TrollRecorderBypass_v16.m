@@ -14,6 +14,8 @@
 #import <dlfcn.h>
 #import <mach-o/dyld.h>
 #import <mach-o/getsect.h>
+#import <mach/mach.h>
+#import <mach-o/nlist.h>
 #import <sys/mman.h>
 #import <string.h>
 #import <stdlib.h>
@@ -115,8 +117,8 @@ static void _perform_rebindings_with_header(struct _rebindings_entry *entry,
             dysymtab_cmd = (intptr_t)cmd;
         } else if (cmd->cmd == LC_SEGMENT_64) {
             struct segment_command_64 *seg = (struct segment_command_64 *)cmd;
-            if (strcmp(seg->segname, SEG_DATA) == 0 ||
-                strcmp(seg->segname, SEG_DATA_CONST) == 0) {
+            if (strcmp(seg->segname, "__DATA") == 0 ||
+                strcmp(seg->segname, "__DATA_CONST") == 0) {
                 struct section_64 *sect = (struct section_64 *)((intptr_t)seg + sizeof(struct segment_command_64));
                 for (uint32_t j = 0; j < seg->nsects; j++) {
                     if (strcmp(sect[j].sectname, SECT_LA_SYMBOL_PTR) == 0) {
