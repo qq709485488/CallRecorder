@@ -1,19 +1,18 @@
 #!/bin/bash
-# TrollRecorder 验证绕过打包脚本 v14
+# TrollRecorder 验证绕过打包脚本 v16
 # 多层次绕过策略：
 #   1. Binary Patch: 修补所有 ObjC 验证方法（含活性检测、Keychain监控）
-#   2. Dylib注入: 弱链接 dylib（UserDefaults预置 + 通知拦截 + 方法替换）
+#   2. Dylib注入: 弱链接 dylib（fishhook Keychain + NSURLSession bypass）
 #   3. 签名清理: 移除旧签名 + ldid -S 重签
 # 
-# 新增 vs v13:
-#   - 补全 17 个遗漏验证方法（活性检测、Keychain监控）
-#   - dylib 增加 4 层绕过（UserDefaults+通知+Keychain+方法替换）
-#   - 先 patch 再注入（两阶段加固）
+# 新增 vs v15:
+#   - fishhook-based Keychain hook 替换 +__const 段 method swizzling
+#   - NSURLSession 请求拦截 bypass
 
 set -e
 
-echo "=== TrollRecorder Bypass v14 (multi-layer) ==="
-echo "Strategy: binary patch + weak-link dylib + 4-layer runtime bypass"
+echo "=== TrollRecorder Bypass v16 (fishhook-based) ==="
+echo "Strategy: binary patch + weak-link dylib + fishhook Keychain + NSURLSession bypass"
 echo "Date: $(date)"
 echo ""
 
@@ -88,9 +87,11 @@ fi
 echo ""
 echo "[4/7] Compiling TrollRecorderBypass.dylib..."
 
-# 优先使用 v15 源文件
+# 优先使用 v16 源文件（fishhook-based Keychain + NSURLSession bypass）
 DYLIB_SRC=""
-if [ -f "$BYPASS_DIR/TrollRecorderBypass_v15.m" ]; then
+if [ -f "$BYPASS_DIR/TrollRecorderBypass_v16.m" ]; then
+    DYLIB_SRC="$BYPASS_DIR/TrollRecorderBypass_v16.m"
+elif [ -f "$BYPASS_DIR/TrollRecorderBypass_v15.m" ]; then
     DYLIB_SRC="$BYPASS_DIR/TrollRecorderBypass_v15.m"
 elif [ -f "$BYPASS_DIR/TrollRecorderBypass_v14.m" ]; then
     DYLIB_SRC="$BYPASS_DIR/TrollRecorderBypass_v14.m"
@@ -186,12 +187,12 @@ ditto -c -k --sequesterRsrc --keepParent Payload ../TRApp_ByPass.tipa
 cd ..
 
 echo ""
-echo "=== v14 Build Complete ==="
+echo "=== v16 Build Complete ==="
 ls -la TRApp_ByPass.tipa
 echo ""
 echo "Multi-layer bypass deployed:"
 echo "  Layer 1: Binary patch (80 methods: alive check + keychain + all verification)"
 echo "  Layer 2: UserDefaults pre-seeding (comprehensive keys)"
-echo "  Layer 3: CFNotificationCenter (purchase/intro blocked)"
-echo "  Layer 4: Keychain hook (SecItemCopyMatching)"
+echo "  Layer 3: Fishhook-based Keychain hook (SecItemCopyMatching)"
+echo "  Layer 4: NSURLSession request interception bypass"
 echo "  Layer 5: ObjC method swizzling (runtime fallback)"
