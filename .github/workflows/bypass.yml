@@ -13,11 +13,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build Bypass (Dylib Only - No Binary Patch)
+      - name: Build Bypass (v2 Safe Patch + Dylib)
         working-directory: ByPass
         run: bash build.sh
-        env:
-          SKIP_PATCH: 1
 
       - name: Upload TRApp_ByPass.tipa
         uses: actions/upload-artifact@v4
