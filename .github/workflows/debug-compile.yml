@@ -2,30 +2,36 @@ name: Debug Compile v16
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   debug:
     runs-on: macos-14
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
       
-      - name: Compile and save log
+      - name: Compile and commit log
         working-directory: ByPass
         run: |
           set +e
           SDK=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null)
-          echo "SDK=$SDK" > ../build_log.txt
-          echo "PWD=$(pwd)" >> ../build_log.txt
-          echo "FILE=$(ls -la TrollRecorderBypass_v16.m 2>&1)" >> ../build_log.txt
-          echo "" >> ../build_log.txt
-          clang -arch arm64 -dynamiclib             -framework Foundation             -framework Security             -isysroot "$SDK"             -miphoneos-version-min=14.0             -fobjc-arc             -v             -o /tmp/test.dylib             TrollRecorderBypass_v16.m >> ../build_log.txt 2>&1
-          echo "" >> ../build_log.txt
-          echo "EXIT_CODE=$?" >> ../build_log.txt
-          echo "Build log size: $(wc -c < ../build_log.txt) bytes"
-      
-      - name: Upload log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build_log.txt
+          LOG="../build_log.txt"
+          echo "SDK=$SDK" > $LOG
+          echo "PWD=$(pwd)" >> $LOG
+          echo "FILE=$(ls -la TrollRecorderBypass_v16.m 2>&1)" >> $LOG
+          echo "" >> $LOG
+          clang -arch arm64 -dynamiclib             -framework Foundation             -framework Security             -isysroot "$SDK"             -miphoneos-version-min=14.0             -fobjc-arc             -v             -o /tmp/test.dylib             TrollRecorderBypass_v16.m >> $LOG 2>&1
+          echo "" >> $LOG
+          echo "EXIT_CODE=$?" >> $LOG
+          echo "Build log size: $(wc -c < $LOG) bytes"
+          
+          # Commit and push log
+          git config user.name "CI Bot"
+          git config user.email "ci@bot.com"
+          git add $LOG
+          git commit -m "CI: build log" || true
+          git push
