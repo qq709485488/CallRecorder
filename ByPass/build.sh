@@ -32,15 +32,26 @@ with zipfile.ZipFile('TRApp_2.14-542.tipa', 'r') as zf:
 print('Extraction complete')
 "
 
-# 2. 安装 ldid
+# 2. 安装 ldid (支持 x86_64 和 arm64)
 echo "[2/7] Installing ldid..."
+ARCH=$(uname -m)
+LDID_URL=""
+case "$ARCH" in
+    arm64)  LDID_URL="https://github.com/ProcursusTeam/ldid/releases/download/v2.1.5-procursus7/ldid_macosx_arm64" ;;
+    x86_64) LDID_URL="https://github.com/ProcursusTeam/ldid/releases/download/v2.1.5-procursus7/ldid_macosx_x86_64" ;;
+    *)      echo "ERROR: Unknown architecture $ARCH"; exit 1 ;;
+esac
+
 if ! command -v ldid &> /dev/null; then
     brew install ldid 2>/dev/null || {
-        curl -sL https://github.com/ProcursusTeam/ldid/releases/download/v2.1.5-procursus7/ldid_macosx_x86_64 -o /usr/local/bin/ldid
-        chmod +x /usr/local/bin/ldid
+        mkdir -p ~/bin
+        curl -sL "$LDID_URL" -o ~/bin/ldid
+        chmod +x ~/bin/ldid
+        export PATH="$HOME/bin:$PATH"
     }
 fi
-ldid --version 2>/dev/null || echo "ldid installed"
+echo "  ldid: $(which ldid) ($(file $(which ldid) 2>/dev/null | cut -d: -f2))"
+ldid --version 2>/dev/null || echo "  ldid installed"
 
 # 3. Binary Patch（第一阶段：修补 ObjC 方法）
 echo ""
