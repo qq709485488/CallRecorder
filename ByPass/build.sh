@@ -1,27 +1,41 @@
 #!/bin/bash
-# TrollRecorder 验证绕过打包脚本 v13
-# 策略：弱链接 + 移除旧签名 + 极简 dylib
-# - LC_LOAD_WEAK_DYLIB：dylib 加载失败也不崩溃
-# - 移除旧签名：ldid -S 从头签名，避免签名冲突
-# - 极简 dylib：只做 UserDefaults 预设，不调用 runtime API
-# 原因：v12 强链接导致 dylib 加载失败时崩溃，v13 改用弱链接
+# TrollRecorder 验证绕过打包脚本 v19
+# 双重策略：静态二进制 Patch (方案1) + fishhook C 层 hook (方案2)
+#
+# 方案1: binary_patch.py - ARM64 指令级 patch，直接修改 TRApp 二进制
+#   - 搜索 __cstring 中的验证函数名字符串引用
+#   - 在函数入口替换为 MOV X0,#1; RET stub
+# 方案2: TrollRecorderBypass_c.dylib - 纯 C dylib + fishhook
+#   - constructor(101) 高优先级加载
+#   - hook SecItemCopyMatching / SecItemAdd (Keychain)
+#   - hook MGCopyAnswerWithError (设备信息)
+#   - hook sysctlbyname (越狱检测)
+#   - hook getenv (环境变量)
+#   - hook NSClassFromString / objc_getClass (类查询)
+# 保留: TrollRecorderBypass.dylib (ObjC 完整版) + TrollRecorderBypassSafe.dylib
 
 set -e
 
-echo "=== TrollRecorder Bypass v18 (enhanced for account-based verification) ==="
-echo "Strategy: NSURLProtocol + URLSession hook + Keychain + UserDefaults + PaymentManager + ASWebAuth"
+echo "============================================================"
+echo "  TrollRecorder Bypass v19"
+echo "  Dual Strategy: Binary Patch (ARM64) + fishhook C hooks"
+echo "============================================================"
 echo "Date: $(date)"
 echo ""
 
 GITHUB_WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"
 BYPASS_DIR="$GITHUB_WORKSPACE/ByPass"
-# 如果 ByPass 目录不存在（本地运行），使用当前目录
 if [ ! -d "$BYPASS_DIR" ]; then
     BYPASS_DIR="$(pwd)"
 fi
 
+SDK_PATH="$(xcrun --sdk iphoneos --show-sdk-path)"
+MIN_IOS="14.0"
+
+# ============================================================
 # 1. 解压原始 .tipa
-echo "[1/6] Extracting original .tipa..."
+# ============================================================
+echo "[1/8] Extracting original .tipa..."
 python3 -c "
 import zipfile
 with zipfile.ZipFile('TRApp_2.14-542.tipa', 'r') as zf:
@@ -29,8 +43,11 @@ with zipfile.ZipFile('TRApp_2.14-542.tipa', 'r') as zf:
 print('Extraction complete')
 "
 
+# ============================================================
 # 2. 安装 ldid
-echo "[2/6] Installing ldid..."
+# ============================================================
+echo ""
+echo "[2/8] Installing ldid..."
 if ! command -v ldid &> /dev/null; then
     brew install ldid 2>/dev/null || {
         curl -sL https://github.com/ProcursusTeam/ldid/releases/download/v2.1.5-procursus7/ldid_macosx_x86_64 -o /usr/local/bin/ldid
@@ -39,11 +56,49 @@ if ! command -v ldid &> /dev/null; then
 fi
 ldid --version 2>/dev/null || echo "ldid installed"
 
-# 3. 编译两个 dylib：原始 v17 增强版 + 最小安全诊断版
+# ============================================================
+# 3. 编译 dylibs (方案2: fishhook C dylib + 原有 ObjC dylibs)
+# ============================================================
 echo ""
 
-# 3a. 编译原始 v17 增强版 dylib（完整 hook/swizzle/Keychain/etc）
-echo "[3a/6] Compiling TrollRecorderBypass.dylib (v18 enhanced, full hooks)..."
+# 3a. 编译 TrollRecorderBypass_c.dylib (方案2: 纯 C + fishhook)
+echo "[3a/8] Compiling TrollRecorderBypass_c.dylib (Scheme 2: C + fishhook)..."
+FISHHOOK_C="$BYPASS_DIR/fishhook.c"
+BYPASS_C="$BYPASS_DIR/TrollRecorderBypass_c.c"
+
+if [ ! -f "$FISHHOOK_C" ]; then
+    echo "ERROR: fishhook.c not found at $FISHHOOK_C"
+    exit 1
+fi
+if [ ! -f "$BYPASS_C" ]; then
+    echo "ERROR: TrollRecorderBypass_c.c not found at $BYPASS_C"
+    exit 1
+fi
+
+clang -arch arm64 -dynamiclib \
+    -framework Foundation \
+    -framework Security \
+    -framework CoreFoundation \
+    -framework UIKit \
+    -isysroot "$SDK_PATH" \
+    -miphoneos-version-min="$MIN_IOS" \
+    -fobjc-arc \
+    -I"$SDK_PATH/usr/include" \
+    -I"$BYPASS_DIR" \
+    -o TrollRecorderBypass_c.dylib \
+    "$BYPASS_C" \
+    "$FISHHOOK_C"
+
+if [ ! -f TrollRecorderBypass_c.dylib ]; then
+    echo "ERROR: Failed to compile TrollRecorderBypass_c.dylib"
+    exit 1
+fi
+echo "  TrollRecorderBypass_c.dylib compiled: $(file TrollRecorderBypass_c.dylib)"
+echo "  Size: $(stat -f%z TrollRecorderBypass_c.dylib) bytes"
+
+# 3b. 编译 ObjC 完整版 dylib (保留原有方案)
+echo ""
+echo "[3b/8] Compiling TrollRecorderBypass.dylib (ObjC enhanced, full hooks)..."
 SOURCE_FILE="$BYPASS_DIR/TrollRecorderBypass_v17.m"
 if [ ! -f "$SOURCE_FILE" ]; then
     SOURCE_FILE="$BYPASS_DIR/TrollRecorderBypass.m"
@@ -55,10 +110,10 @@ clang -arch arm64 -dynamiclib \
     -framework Foundation \
     -framework Security \
     -framework UIKit \
-    -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
-    -miphoneos-version-min=14.0 \
+    -isysroot "$SDK_PATH" \
+    -miphoneos-version-min="$MIN_IOS" \
     -fobjc-arc \
-    -I"$(xcrun --sdk iphoneos --show-sdk-path)/usr/include" \
+    -I"$SDK_PATH/usr/include" \
     -o TrollRecorderBypass.dylib \
     "$SOURCE_FILE"
 
@@ -69,9 +124,9 @@ fi
 echo "  TrollRecorderBypass.dylib compiled: $(file TrollRecorderBypass.dylib)"
 echo "  Size: $(stat -f%z TrollRecorderBypass.dylib) bytes"
 
-# 3b. 编译最小安全诊断版 dylib（仅 Foundation，无 hook/swizzle）
+# 3c. 编译最小安全诊断版 dylib
 echo ""
-echo "[3b/6] Compiling TrollRecorderBypassSafe.dylib (minimal diagnostic, no hooks)..."
+echo "[3c/8] Compiling TrollRecorderBypassSafe.dylib (minimal diagnostic)..."
 SAFE_SOURCE="$BYPASS_DIR/TrollRecorderBypass_safe.m"
 if [ ! -f "$SAFE_SOURCE" ]; then
     echo "ERROR: TrollRecorderBypass_safe.m not found at $SAFE_SOURCE"
@@ -79,10 +134,10 @@ if [ ! -f "$SAFE_SOURCE" ]; then
 fi
 clang -arch arm64 -dynamiclib \
     -framework Foundation \
-    -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
-    -miphoneos-version-min=14.0 \
+    -isysroot "$SDK_PATH" \
+    -miphoneos-version-min="$MIN_IOS" \
     -fobjc-arc \
-    -I"$(xcrun --sdk iphoneos --show-sdk-path)/usr/include" \
+    -I"$SDK_PATH/usr/include" \
     -o TrollRecorderBypassSafe.dylib \
     "$SAFE_SOURCE"
 
@@ -93,26 +148,67 @@ fi
 echo "  TrollRecorderBypassSafe.dylib compiled: $(file TrollRecorderBypassSafe.dylib)"
 echo "  Size: $(stat -f%z TrollRecorderBypassSafe.dylib) bytes"
 
-# 4. 使用修复后的 inject_dylib.py 注入
+# ============================================================
+# 4. 方案1: 静态二进制 Patch (ARM64 指令级)
+# ============================================================
 echo ""
-echo "[4/6] Injecting dylib (padding-based, no data shifting)..."
+echo "[4/8] Scheme 1: Static binary patch (ARM64 instruction-level)..."
 
 cd "extracted/Payload/TRApp.app"
 
-# 复制两个 dylib 到 app 目录
-cp "$BYPASS_DIR/TrollRecorderBypass.dylib" . 2>/dev/null || cp TrollRecorderBypass.dylib . 2>/dev/null || {
-    echo "  ERROR: Cannot find TrollRecorderBypass.dylib"
-    echo "  Looking in: $BYPASS_DIR/ and current dir"
-    ls -la "$BYPASS_DIR/"*.dylib 2>/dev/null || true
-    ls -la ./*.dylib 2>/dev/null || true
+# 对 TRApp 主二进制做指令级 patch
+if [ -f "TRApp" ]; then
+    echo "  Patching TRApp with binary_patch.py..."
+    
+    # 备份
+    cp TRApp TRApp.orig
+    
+    python3 "$BYPASS_DIR/binary_patch.py" TRApp -o TRApp_patched 2>&1 || {
+        echo "  WARNING: binary_patch.py failed, keeping original"
+        cp TRApp.orig TRApp
+    }
+    
+    if [ -f TRApp_patched ]; then
+        mv TRApp_patched TRApp
+        echo "  TRApp patched successfully"
+    else
+        echo "  WARNING: TRApp_patched not generated, keeping original"
+        cp TRApp.orig TRApp
+    fi
+    
+    rm -f TRApp.orig
+else
+    echo "  TRApp binary not found, skipping instruction-level patch"
+fi
+
+cd "$BYPASS_DIR"
+
+# ============================================================
+# 5. dylib 注入 (方案2 C dylib + 原有 dylibs)
+# ============================================================
+echo ""
+echo "[5/8] Injecting dylibs..."
+
+cd "extracted/Payload/TRApp.app"
+
+# 复制所有 dylib 到 app bundle
+echo "  Copying dylibs to app bundle..."
+cp "$BYPASS_DIR/TrollRecorderBypass_c.dylib" . 2>/dev/null || {
+    echo "  ERROR: Cannot find TrollRecorderBypass_c.dylib"
     exit 1
 }
-cp "$BYPASS_DIR/TrollRecorderBypassSafe.dylib" . 2>/dev/null || cp TrollRecorderBypassSafe.dylib . 2>/dev/null || {
+cp "$BYPASS_DIR/TrollRecorderBypass.dylib" . 2>/dev/null || {
+    echo "  ERROR: Cannot find TrollRecorderBypass.dylib"
+    exit 1
+}
+cp "$BYPASS_DIR/TrollRecorderBypassSafe.dylib" . 2>/dev/null || {
     echo "  ERROR: Cannot find TrollRecorderBypassSafe.dylib"
     exit 1
 }
-echo "  Both dylibs copied to app bundle"
+echo "  All dylibs copied:"
+ls -la *.dylib 2>/dev/null
 
+# 要注入的二进制列表
 BINARIES="TRApp TRCallMonitor TRAudioRecorder TRCallRecorder TRSyncLite TRVoiceMemo TRAudioPlayer TRSpeechUtterance"
 
 for binary in $BINARIES; do
@@ -123,7 +219,6 @@ for binary in $BINARIES; do
     echo ""
     echo "  Processing: $binary"
     
-    # 验证是 Mach-O 文件
     file "$binary" | grep -q "Mach-O" || {
         echo "    SKIP: Not a Mach-O file"
         continue
@@ -132,24 +227,26 @@ for binary in $BINARIES; do
     # 备份
     cp "$binary" "${binary}.orig"
     
-    # 使用修复后的 Python 脚本注入（弱链接，dylib 加载失败也不崩溃）
-    python3 "$BYPASS_DIR/inject_dylib.py" "$binary" "@executable_path/TrollRecorderBypass.dylib" "${binary}_patched" || {
-        echo "    Injection FAILED, keeping original"
+    # 注入方案2 C dylib (弱链接)
+    python3 "$BYPASS_DIR/inject_dylib.py" "$binary" \
+        "@executable_path/TrollRecorderBypass_c.dylib" \
+        "${binary}_patched" || {
+        echo "    C dylib injection FAILED, keeping original"
         cp "${binary}.orig" "$binary"
         rm -f "${binary}_patched"
         continue
     }
     
-    # 检查 patched 文件
     if [ -f "${binary}_patched" ]; then
         mv "${binary}_patched" "$binary"
-        echo "    INJECTED: $binary"
+        echo "    INJECTED (C dylib): $binary"
         
-        # 验证注入结果
-        otool -L "$binary" | grep -i "TrollRecorderBypass" && echo "    Verify: dylib in load commands" || echo "    Verify: WARNING - dylib not found"
+        otool -L "$binary" | grep -i "TrollRecorderBypass" && \
+            echo "    Verify: dylib(s) in load commands" || \
+            echo "    Verify: WARNING - dylib not found"
         
-        # 验证二进制结构完整性
-        otool -l "$binary" > /dev/null 2>&1 && echo "    Structure: OK" || {
+        otool -l "$binary" > /dev/null 2>&1 && \
+            echo "    Structure: OK" || {
             echo "    Structure: CORRUPTED! Restoring original"
             cp "${binary}.orig" "$binary"
         }
@@ -161,20 +258,32 @@ for binary in $BINARIES; do
     rm -f "${binary}.orig"
 done
 
-# 4.5. 使用 patch_plist.py 注入 LSEnvironment → 只加载安全版 dylib
+# ============================================================
+# 6. Info.plist LSEnvironment → 加载方案2 C dylib
+# ============================================================
 echo ""
-echo "[4.5/6] Patching Info.plist LSEnvironment (safe dylib only)..."
-python3 "$BYPASS_DIR/patch_plist.py" "Info.plist" "@executable_path/TrollRecorderBypassSafe.dylib"
+echo "[6/8] Patching Info.plist LSEnvironment..."
 
-# 5. 重新签名所有二进制文件
+# 方案2: C dylib 通过 LSEnvironment DYLD_INSERT_LIBRARIES 加载
+python3 "$BYPASS_DIR/patch_plist.py" "Info.plist" \
+    "@executable_path/TrollRecorderBypass_c.dylib"
+
+echo "  LSEnvironment configured for C dylib"
+
+# ============================================================
+# 7. 重新签名
+# ============================================================
 echo ""
-echo "[5/6] Re-signing binaries..."
+echo "[7/8] Re-signing all binaries..."
+
+echo "  Signing: TrollRecorderBypass_c.dylib (Scheme 2)"
+ldid -S TrollRecorderBypass_c.dylib 2>&1 || echo "  WARNING: ldid sign failed for C dylib"
 
 echo "  Signing: TrollRecorderBypass.dylib"
-ldid -S TrollRecorderBypass.dylib 2>&1 || echo "  WARNING: ldid sign failed for dylib"
+ldid -S TrollRecorderBypass.dylib 2>&1 || echo "  WARNING: ldid sign failed"
 
 echo "  Signing: TrollRecorderBypassSafe.dylib"
-ldid -S TrollRecorderBypassSafe.dylib 2>&1 || echo "  WARNING: ldid sign failed for safe dylib"
+ldid -S TrollRecorderBypassSafe.dylib 2>&1 || echo "  WARNING: ldid sign failed"
 
 for binary in $BINARIES; do
     if [ -f "$binary" ]; then
@@ -196,22 +305,37 @@ if [ -d "PlugIns" ]; then
     done
 fi
 
-# 6. 重新打包
+# ============================================================
+# 8. 重新打包
+# ============================================================
 echo ""
-echo "[6/6] Repackaging as .tipa..."
+echo "[8/8] Repackaging as .tipa..."
+
 cd "$BYPASS_DIR"
 cd extracted
 ditto -c -k --sequesterRsrc --keepParent Payload ../TRApp_ByPass.tipa
 cd ..
 
 echo ""
-echo "=== Done! ==="
+echo "============================================================"
+echo "  Build Complete!"
+echo "============================================================"
 ls -la TRApp_ByPass.tipa
 echo ""
-echo "v18: Enhanced bypass for account-based verification"
-echo "  - NSURLProtocol intercepts DRM server responses"
-echo "  - NSURLSession hook intercepts Havoc API"
-echo "  - PaymentManager, CloudService, DeviceInfo patches"
-echo "  - ASWebAuthenticationSession bypass"
-echo "  - Keychain + UserDefaults + FeatureFlagStore hooks"
-echo "  - Diagnostic logging to /tmp/bypass.log"
+echo "v19: Dual Strategy Bypass"
+echo "  Scheme 1 (Binary Patch): ARM64 instruction-level patch on TRApp"
+echo "    - __cstring xref search for verification function names"
+echo "    - Entry point: MOV X0,#1; RET stubs"
+echo "    - Target: checkCodeSignature, globalSetupApplication, ExecuteReceipt, etc."
+echo ""
+echo "  Scheme 2 (fishhook C hooks): TrollRecorderBypass_c.dylib"
+echo "    - constructor(101) high-priority loading"
+echo "    - SecItemCopyMatching / SecItemAdd (Keychain intercept)"
+echo "    - MGCopyAnswerWithError (device info fake)"
+echo "    - sysctlbyname (jailbreak detection bypass)"
+echo "    - getenv (environment variable fake)"
+echo "    - NSClassFromString / objc_getClass (class query intercept)"
+echo "    - Diagnostic log: /tmp/bypass_c.log"
+echo ""
+echo "  Retained: TrollRecorderBypass.dylib (ObjC hooks)"
+echo "  Retained: TrollRecorderBypassSafe.dylib (minimal diagnostic)"
