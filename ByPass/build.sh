@@ -39,10 +39,11 @@ if ! command -v ldid &> /dev/null; then
 fi
 ldid --version 2>/dev/null || echo "ldid installed"
 
-# 3. 编译 dylib (v18 增强版)
+# 3. 编译两个 dylib：原始 v17 增强版 + 最小安全诊断版
 echo ""
-echo "[3/6] Compiling TrollRecorderBypass.dylib (v18 enhanced)..."
-# 优先编译 v17（v18增强版），回退到旧版
+
+# 3a. 编译原始 v17 增强版 dylib（完整 hook/swizzle/Keychain/etc）
+echo "[3a/6] Compiling TrollRecorderBypass.dylib (v18 enhanced, full hooks)..."
 SOURCE_FILE="$BYPASS_DIR/TrollRecorderBypass_v17.m"
 if [ ! -f "$SOURCE_FILE" ]; then
     SOURCE_FILE="$BYPASS_DIR/TrollRecorderBypass.m"
@@ -62,11 +63,35 @@ clang -arch arm64 -dynamiclib \
     "$SOURCE_FILE"
 
 if [ ! -f TrollRecorderBypass.dylib ]; then
-    echo "ERROR: Failed to compile dylib"
+    echo "ERROR: Failed to compile TrollRecorderBypass.dylib"
     exit 1
 fi
-echo "Dylib compiled: $(file TrollRecorderBypass.dylib)"
-echo "Dylib size: $(stat -f%z TrollRecorderBypass.dylib) bytes"
+echo "  TrollRecorderBypass.dylib compiled: $(file TrollRecorderBypass.dylib)"
+echo "  Size: $(stat -f%z TrollRecorderBypass.dylib) bytes"
+
+# 3b. 编译最小安全诊断版 dylib（仅 Foundation，无 hook/swizzle）
+echo ""
+echo "[3b/6] Compiling TrollRecorderBypassSafe.dylib (minimal diagnostic, no hooks)..."
+SAFE_SOURCE="$BYPASS_DIR/TrollRecorderBypass_safe.m"
+if [ ! -f "$SAFE_SOURCE" ]; then
+    echo "ERROR: TrollRecorderBypass_safe.m not found at $SAFE_SOURCE"
+    exit 1
+fi
+clang -arch arm64 -dynamiclib \
+    -framework Foundation \
+    -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
+    -miphoneos-version-min=14.0 \
+    -fobjc-arc \
+    -I"$(xcrun --sdk iphoneos --show-sdk-path)/usr/include" \
+    -o TrollRecorderBypassSafe.dylib \
+    "$SAFE_SOURCE"
+
+if [ ! -f TrollRecorderBypassSafe.dylib ]; then
+    echo "ERROR: Failed to compile TrollRecorderBypassSafe.dylib"
+    exit 1
+fi
+echo "  TrollRecorderBypassSafe.dylib compiled: $(file TrollRecorderBypassSafe.dylib)"
+echo "  Size: $(stat -f%z TrollRecorderBypassSafe.dylib) bytes"
 
 # 4. 使用修复后的 inject_dylib.py 注入
 echo ""
@@ -74,7 +99,7 @@ echo "[4/6] Injecting dylib (padding-based, no data shifting)..."
 
 cd "extracted/Payload/TRApp.app"
 
-# 复制 dylib 到 app 目录
+# 复制两个 dylib 到 app 目录
 cp "$BYPASS_DIR/TrollRecorderBypass.dylib" . 2>/dev/null || cp TrollRecorderBypass.dylib . 2>/dev/null || {
     echo "  ERROR: Cannot find TrollRecorderBypass.dylib"
     echo "  Looking in: $BYPASS_DIR/ and current dir"
@@ -82,6 +107,11 @@ cp "$BYPASS_DIR/TrollRecorderBypass.dylib" . 2>/dev/null || cp TrollRecorderBypa
     ls -la ./*.dylib 2>/dev/null || true
     exit 1
 }
+cp "$BYPASS_DIR/TrollRecorderBypassSafe.dylib" . 2>/dev/null || cp TrollRecorderBypassSafe.dylib . 2>/dev/null || {
+    echo "  ERROR: Cannot find TrollRecorderBypassSafe.dylib"
+    exit 1
+}
+echo "  Both dylibs copied to app bundle"
 
 BINARIES="TRApp TRCallMonitor TRAudioRecorder TRCallRecorder TRSyncLite TRVoiceMemo TRAudioPlayer TRSpeechUtterance"
 
@@ -131,10 +161,10 @@ for binary in $BINARIES; do
     rm -f "${binary}.orig"
 done
 
-# 4.5. 使用 patch_plist.py 注入 LSEnvironment（TrollStore DYLD_INSERT_LIBRARIES）
+# 4.5. 使用 patch_plist.py 注入 LSEnvironment → 只加载安全版 dylib
 echo ""
-echo "[4.5/6] Patching Info.plist LSEnvironment..."
-python3 "$BYPASS_DIR/patch_plist.py" "Info.plist" "@executable_path/TrollRecorderBypass.dylib"
+echo "[4.5/6] Patching Info.plist LSEnvironment (safe dylib only)..."
+python3 "$BYPASS_DIR/patch_plist.py" "Info.plist" "@executable_path/TrollRecorderBypassSafe.dylib"
 
 # 5. 重新签名所有二进制文件
 echo ""
@@ -142,6 +172,9 @@ echo "[5/6] Re-signing binaries..."
 
 echo "  Signing: TrollRecorderBypass.dylib"
 ldid -S TrollRecorderBypass.dylib 2>&1 || echo "  WARNING: ldid sign failed for dylib"
+
+echo "  Signing: TrollRecorderBypassSafe.dylib"
+ldid -S TrollRecorderBypassSafe.dylib 2>&1 || echo "  WARNING: ldid sign failed for safe dylib"
 
 for binary in $BINARIES; do
     if [ -f "$binary" ]; then
