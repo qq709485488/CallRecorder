@@ -1,5 +1,5 @@
 #!/bin/bash
-# TrollRecorder 验证绕过打包脚本 v16
+# TrollRecorder 验证绕过打包脚本 v17
 # 多层次绕过策略：
 #   1. Binary Patch: 修补所有 ObjC 验证方法（含活性检测、Keychain监控）
 #   2. Dylib注入: 弱链接 dylib（fishhook Keychain + NSURLSession bypass）
@@ -11,7 +11,7 @@
 
 set -e
 
-echo "=== TrollRecorder Bypass v16 (fishhook-based) ==="
+echo "=== TrollRecorder Bypass v17 (multi-layer) ==="
 echo "Strategy: binary patch + weak-link dylib + fishhook Keychain + NSURLSession bypass"
 echo "Date: $(date)"
 echo ""
@@ -89,7 +89,9 @@ echo "[4/7] Compiling TrollRecorderBypass.dylib..."
 
 # 优先使用 v16 源文件（fishhook-based Keychain + NSURLSession bypass）
 DYLIB_SRC=""
-if [ -f "$BYPASS_DIR/TrollRecorderBypass_v16.m" ]; then
+if [ -f "$BYPASS_DIR/TrollRecorderBypass_v17.m" ]; then
+    DYLIB_SRC="$BYPASS_DIR/TrollRecorderBypass_v17.m"
+elif [ -f "$BYPASS_DIR/TrollRecorderBypass_v16.m" ]; then
     DYLIB_SRC="$BYPASS_DIR/TrollRecorderBypass_v16.m"
 elif [ -f "$BYPASS_DIR/TrollRecorderBypass_v15.m" ]; then
     DYLIB_SRC="$BYPASS_DIR/TrollRecorderBypass_v15.m"
@@ -181,7 +183,7 @@ ditto -c -k --sequesterRsrc --keepParent Payload ../TRApp_ByPass.tipa
 cd ..
 
 echo ""
-echo "=== v16 Build Complete ==="
+echo "=== v17 Build Complete ==="
 ls -la TRApp_ByPass.tipa
 echo ""
 echo "Multi-layer bypass deployed:"
