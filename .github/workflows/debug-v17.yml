@@ -10,22 +10,25 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Compile v17
+      - name: Compile v17 and capture errors
+        working-directory: ByPass
         run: |
-          cd ByPass
-          SDK=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null)
-          echo "SDK=$SDK"
-          ls -la TrollRecorderBypass_v17.m
-          
-          {
-            clang -v -arch arm64 -dynamiclib               -framework Foundation -framework Security -framework CoreFoundation               -isysroot "$SDK"               -miphoneos-version-min=14.0               -fobjc-arc               -o /tmp/test_v17.dylib               TrollRecorderBypass_v17.m 2>&1
-          } || true
-          
-          echo "---EXIT_CODE=$?---"
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          LOG="../compile_v17_log.txt"
+          echo "SDK: $SDK" > "$LOG"
+          echo "---" >> "$LOG"
+          clang -v -arch arm64 -dynamiclib             -framework Foundation -framework Security -framework CoreFoundation             -isysroot "$SDK"             -miphoneos-version-min=14.0             -fobjc-arc             -o /tmp/test_v17.dylib             TrollRecorderBypass_v17.m >> "$LOG" 2>&1
+          echo "EXIT_CODE=$?" >> "$LOG"
+          cat "$LOG"
 
-      - name: Save log
+      - name: Commit log
         if: always()
         run: |
-          cp ByPass/TrollRecorderBypass_v17.m debug_v17_source.m 2>/dev/null || true
-          echo "Saved source for inspection"
+          cp compile_v17_log.txt ByPass/ 2>/dev/null
+          git config user.name "CI Bot"
+          git config user.email "ci@bot.local"
+          git add compile_v17_log.txt
+          git diff --cached --quiet || (git commit -m "CI: v17 compile log" && git push)
