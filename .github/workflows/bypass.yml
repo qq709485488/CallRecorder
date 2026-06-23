@@ -24,3 +24,13 @@ jobs:
         with:
           name: TRApp_ByPass.tipa
           path: ByPass/TRApp_ByPass.tipa
+      
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "ByPass/TRApp_ByPass.tipa"
+          tag: v16-${{ github.run_number }}
+          name: "v16 Build #${{ github.run_number }}"
+          body: "TrollRecorder Bypass v16 (fishhook + swizzle) - CI Build #${{ github.run_number }}"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          draft: false
