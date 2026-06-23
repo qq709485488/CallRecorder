@@ -43,6 +43,19 @@
 #ifndef REFERENCED_DYNAMICALLY
 #define REFERENCED_DYNAMICALLY 0x0010
 #endif
+
+/* iOS SDK lacks <mach-o/nlist.h> - define struct nlist_64 */
+#ifndef _MACH_O_NLIST_H_
+struct nlist_64 {
+    union {
+        uint32_t n_strx;
+    } n_un;
+    uint8_t n_type;
+    uint8_t n_sect;
+    uint16_t n_desc;
+    uint64_t n_value;
+};
+#endif
 #ifndef S_LAZY_SYMBOL_POINTERS
 #define S_LAZY_SYMBOL_POINTERS 0x7
 #endif
@@ -239,9 +252,10 @@ static BOOL bypass_isHavocKeychainQuery(CFDictionaryRef query) {
     CFStringRef acc = CFDictionaryGetValue(query, kSecAttrAccount);
     CFStringRef lbl = CFDictionaryGetValue(query, kSecAttrLabel);
     
-    NSArray *candidates = @[
-        (__bridge id)(svc ?: @""), (__bridge id)(acc ?: @""), (__bridge id)(lbl ?: @"")
-    ];
+    id svcStr = svc ? (__bridge id)svc : @"";
+    id accStr = acc ? (__bridge id)acc : @"";
+    id lblStr = lbl ? (__bridge id)lbl : @"";
+    NSArray *candidates = @[svcStr, accStr, lblStr];
     for (NSString *s in candidates) {
         NSString *lower = [s lowercaseString];
         if ([lower containsString:@"havoc"] ||
