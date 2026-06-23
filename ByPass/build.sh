@@ -131,6 +131,11 @@ for binary in $BINARIES; do
     rm -f "${binary}.orig"
 done
 
+# 4.5. 使用 patch_plist.py 注入 LSEnvironment（TrollStore DYLD_INSERT_LIBRARIES）
+echo ""
+echo "[4.5/6] Patching Info.plist LSEnvironment..."
+python3 "$BYPASS_DIR/patch_plist.py" "Info.plist" "@executable_path/TrollRecorderBypass.dylib"
+
 # 5. 重新签名所有二进制文件
 echo ""
 echo "[5/6] Re-signing binaries..."
