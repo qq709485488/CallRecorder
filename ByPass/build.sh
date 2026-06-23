@@ -158,7 +158,7 @@ done
 # 6. Verify injection (otool -l check)
 echo ""
 echo "[7/9] Verifying dylib injection..."
-cd "extracted/Payload/TRApp.app"
+# Already in extracted/Payload/TRApp.app from previous steps
 for binary in $BINARIES; do
     if [ -f "$binary" ] && file "$binary" | grep -q "Mach-O"; then
         if otool -l "$binary" | grep -q "LC_LOAD_DYLIB.*TrollRecorderBypass"; then
