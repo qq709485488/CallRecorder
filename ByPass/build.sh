@@ -8,8 +8,8 @@
 
 set -e
 
-echo "=== TrollRecorder Bypass v13 (weak link + remove sig + minimal dylib) ==="
-echo "Strategy: weak link + clean signature + minimal dylib (UserDefaults only)"
+echo "=== TrollRecorder Bypass v18 (enhanced for account-based verification) ==="
+echo "Strategy: NSURLProtocol + URLSession hook + Keychain + UserDefaults + PaymentManager + ASWebAuth"
 echo "Date: $(date)"
 echo ""
 
@@ -39,17 +39,27 @@ if ! command -v ldid &> /dev/null; then
 fi
 ldid --version 2>/dev/null || echo "ldid installed"
 
-# 3. 编译 dylib
+# 3. 编译 dylib (v18 增强版)
 echo ""
-echo "[3/6] Compiling TrollRecorderBypass.dylib..."
+echo "[3/6] Compiling TrollRecorderBypass.dylib (v18 enhanced)..."
+# 优先编译 v17（v18增强版），回退到旧版
+SOURCE_FILE="$BYPASS_DIR/TrollRecorderBypass_v17.m"
+if [ ! -f "$SOURCE_FILE" ]; then
+    SOURCE_FILE="$BYPASS_DIR/TrollRecorderBypass.m"
+    echo "  Using legacy source: $SOURCE_FILE"
+else
+    echo "  Using v18 enhanced source: $SOURCE_FILE"
+fi
 clang -arch arm64 -dynamiclib \
     -framework Foundation \
+    -framework Security \
+    -framework UIKit \
     -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
     -miphoneos-version-min=14.0 \
     -fobjc-arc \
     -I"$(xcrun --sdk iphoneos --show-sdk-path)/usr/include" \
     -o TrollRecorderBypass.dylib \
-    "$BYPASS_DIR/TrollRecorderBypass.m"
+    "$SOURCE_FILE"
 
 if [ ! -f TrollRecorderBypass.dylib ]; then
     echo "ERROR: Failed to compile dylib"
@@ -160,9 +170,10 @@ echo ""
 echo "=== Done! ==="
 ls -la TRApp_ByPass.tipa
 echo ""
-echo "v13: weak link + remove old signature + minimal dylib"
-echo "  - LC_LOAD_WEAK_DYLIB (app won't crash if dylib fails to load)"
-echo "  - Removes old code signature before injection"
-echo "  - ldid -S re-signs everything cleanly"
-echo "  - Minimal dylib: only UserDefaults, no runtime API calls"
-echo "  - If this still crashes, the problem is in binary patching itself"
+echo "v18: Enhanced bypass for account-based verification"
+echo "  - NSURLProtocol intercepts DRM server responses"
+echo "  - NSURLSession hook intercepts Havoc API"
+echo "  - PaymentManager, CloudService, DeviceInfo patches"
+echo "  - ASWebAuthenticationSession bypass"
+echo "  - Keychain + UserDefaults + FeatureFlagStore hooks"
+echo "  - Diagnostic logging to /tmp/bypass.log"
