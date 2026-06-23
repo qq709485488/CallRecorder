@@ -1,5 +1,5 @@
 #!/bin/bash
-# TrollRecorder 验证绕过打包脚本 v17
+# TrollRecorder 验证绕过打包脚本 v18
 # 多层次绕过策略：
 #   1. Binary Patch: 修补所有 ObjC 验证方法（含活性检测、Keychain监控）
 #   2. Dylib注入: 弱链接 dylib（fishhook Keychain + NSURLSession bypass）
@@ -11,8 +11,8 @@
 
 set -e
 
-echo "=== TrollRecorder Bypass v17 (multi-layer) ==="
-echo "Strategy: binary patch + weak-link dylib + fishhook Keychain + NSURLSession bypass"
+echo "=== TrollRecorder Bypass v18 (multi-layer) ==="
+echo "Strategy: binary patch + STRONG-link dylib + fishhook Keychain + NSURLSession bypass"
 echo "Date: $(date)"
 echo ""
 
@@ -106,6 +106,7 @@ clang -arch arm64 -dynamiclib \
     -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
     -miphoneos-version-min=14.0 \
     -fobjc-arc \
+    -install_name @executable_path/TrollRecorderBypass.dylib \
     -o TrollRecorderBypass.dylib \
     "$DYLIB_SRC"
 
@@ -115,9 +116,9 @@ if [ ! -f TrollRecorderBypass.dylib ]; then
 fi
 echo "Dylib compiled: $(file TrollRecorderBypass.dylib)"
 
-# 5. 注入 dylib（第二阶段：弱链接加载）
+# 5. 注入 dylib（第二阶段：强链接加载 v18）
 echo ""
-echo "[5/7] Injecting dylib (weak link)..."
+echo "[5/7] Injecting dylib (strong link v18)..."
 
 cd "extracted/Payload/TRApp.app"
 cp "$BYPASS_DIR/TrollRecorderBypass.dylib" . 2>/dev/null || cp TrollRecorderBypass.dylib .
@@ -142,15 +143,29 @@ for binary in $BINARIES; do
     if [ -f "${binary}_patched" ]; then
         mv "${binary}_patched" "$binary"
         echo "    INJECTED: $binary"
-        otool -L "$binary" | grep -i "TrollRecorderBypass" && echo "    Verify: dylib in load commands" || echo "    Verify: WARNING"
+        otool -L "$binary" | grep -i "TrollRecorderBypass" && echo "    Verify: dylib in load commands" || { echo "    FATAL: dylib NOT in load commands!"; exit 1; }
     fi
     
     rm -f "${binary}.orig"
 done
 
-# 6. 签名
+# 6. Verify injection (otool -l check)
 echo ""
-echo "[6/7] Signing binaries..."
+echo "[6/8] Verifying dylib injection..."
+cd "extracted/Payload/TRApp.app"
+for binary in $BINARIES; do
+    if [ -f "$binary" ] && file "$binary" | grep -q "Mach-O"; then
+        if otool -l "$binary" | grep -q "LC_LOAD_DYLIB.*TrollRecorderBypass"; then
+            echo "  PASS: $binary has LC_LOAD_DYLIB -> TrollRecorderBypass"
+        else
+            echo "  FAIL: $binary missing TrollRecorderBypass load command"
+        fi
+    fi
+done
+
+# 7/8. 签名
+echo ""
+echo "[7/8] Signing binaries..."
 
 echo "  Signing dylib..."
 ldid -S TrollRecorderBypass.dylib 2>&1 || echo "  WARNING: ldid sign failed for dylib"
@@ -174,19 +189,19 @@ if [ -d "PlugIns" ]; then
     done
 fi
 
-# 7. 打包
+# 8. 打包
 echo ""
-echo "[7/7] Repackaging .tipa..."
+echo "[8/8] Repackaging .tipa..."
 cd "$BYPASS_DIR"
 cd extracted
 ditto -c -k --sequesterRsrc --keepParent Payload ../TRApp_ByPass.tipa
 cd ..
 
 echo ""
-echo "=== v17 Build Complete ==="
+echo "=== v18 Build Complete ==="
 ls -la TRApp_ByPass.tipa
 echo ""
-echo "Multi-layer bypass deployed:"
+echo "Multi-layer bypass deployed (v18 strong-link):"
 echo "  Layer 1: Binary patch (80 methods: alive check + keychain + all verification)"
 echo "  Layer 2: UserDefaults pre-seeding (comprehensive keys)"
 echo "  Layer 3: Fishhook-based Keychain hook (SecItemCopyMatching)"
