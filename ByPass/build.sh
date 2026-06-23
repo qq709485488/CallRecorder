@@ -86,7 +86,9 @@ clang -arch arm64 -dynamiclib \
     -I"$SDK_PATH/usr/include" \
     -I"$BYPASS_DIR" \
     -o TrollRecorderBypass_c.dylib \
+    -x objective-c \
     "$BYPASS_C" \
+    -x c \
     "$FISHHOOK_C"
 
 if [ ! -f TrollRecorderBypass_c.dylib ]; then

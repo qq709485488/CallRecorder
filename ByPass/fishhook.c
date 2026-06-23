@@ -13,6 +13,7 @@
 #include <mach-o/loader.h>
 #include <mach-o/nlist.h>
 #include <mach/mach.h>
+#include <unistd.h>
 
 #ifndef SEG_DATA_CONST
 #define SEG_DATA_CONST  "__DATA_CONST"
@@ -123,7 +124,7 @@ static void perform_rebinding_with_section(struct rebinding_context *ctx,
         if (prot & PROT_WRITE) {
             *slot = ctx->rebindings[j].replacement;
         } else {
-            vm_size_t page_size = getpagesize();
+            vm_size_t page_size = sysconf(_SC_PAGESIZE);
             void *page_start = (void *)((uintptr_t)slot & ~(page_size - 1));
             kern_return_t kr = vm_protect(mach_task_self(), (vm_address_t)page_start,
                                           page_size, FALSE,

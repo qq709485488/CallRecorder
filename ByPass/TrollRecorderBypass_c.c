@@ -14,6 +14,7 @@
 #include <objc/runtime.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
+#import <Foundation/Foundation.h>
 
 #include "fishhook.h"
 
