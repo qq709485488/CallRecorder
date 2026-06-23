@@ -10,6 +10,15 @@
 #import <objc/message.h>
 #import <dlfcn.h>
 #import <mach-o/dyld.h>
+/* iOS SDK lacks <mach-o/nlist.h> - define struct nlist_64 before loader.h forward-declares it */
+struct nlist_64 {
+    union { uint32_t n_strx; } n_un;
+    uint8_t n_type;
+    uint8_t n_sect;
+    uint16_t n_desc;
+    uint64_t n_value;
+};
+
 #import <mach-o/loader.h>
 #import <sys/mman.h>
 #import <CoreFoundation/CoreFoundation.h>
@@ -44,18 +53,6 @@
 #define REFERENCED_DYNAMICALLY 0x0010
 #endif
 
-/* iOS SDK lacks <mach-o/nlist.h> - define struct nlist_64 */
-#ifndef _MACH_O_NLIST_H_
-struct nlist_64 {
-    union {
-        uint32_t n_strx;
-    } n_un;
-    uint8_t n_type;
-    uint8_t n_sect;
-    uint16_t n_desc;
-    uint64_t n_value;
-};
-#endif
 #ifndef S_LAZY_SYMBOL_POINTERS
 #define S_LAZY_SYMBOL_POINTERS 0x7
 #endif
