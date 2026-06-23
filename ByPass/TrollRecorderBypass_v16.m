@@ -36,8 +36,8 @@ static void _bypass_init(void) {
     (void)test_sym;
     
     // Test section macros
-    const char *la = SECT_LA_SYMBOL_PTR;
-    const char *nl = SECT_NL_SYMBOL_PTR;
+    const char *la = "__la_symbol_ptr";
+    const char *nl = "__nl_symbol_ptr";
     (void)la; (void)nl;
     
     // Test segment command
